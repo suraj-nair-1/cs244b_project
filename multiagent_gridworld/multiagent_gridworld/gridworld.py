@@ -29,7 +29,7 @@ class Gridworld(gym.Env):
 
     def step(self, action):
         assert(action.shape == (self.num_agents,))
-        print(action)
+        #print(action)
         #### 0 = None, 1 = left, 2 = right, 3 = up, 4 = down
         ## Good Agents Step
         for i, act in enumerate(action):
