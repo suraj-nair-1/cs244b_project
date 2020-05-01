@@ -7,7 +7,7 @@ import os
 
 class Gridworld(gym.Env):
     def __init__(self):
-        self.grid_size = 5
+        self.grid_size = 10
         self.grid = np.zeros((self.grid_size,self.grid_size)).astype(np.int32)
         self.num_agents = 3
         self.bad_agent_pos = np.zeros((2)).astype(np.int32)
@@ -29,7 +29,6 @@ class Gridworld(gym.Env):
 
     def step(self, action):
         assert(action.shape == (self.num_agents,))
-        #print(action)
         #### 0 = None, 1 = left, 2 = right, 3 = up, 4 = down
         ## Good Agents Step
         for i, act in enumerate(action):
@@ -41,12 +40,15 @@ class Gridworld(gym.Env):
             self.update_grid()
 
         ## Bad Agent Step
-        next_pos = self.bad_agent_pos + self.apply_action(np.random.randint(5))
-        next_pos = next_pos.clip(0, self.grid_size - 1)
-        if self.grid[next_pos[0], next_pos[1]] == 0:
-            self.bad_agent_pos = next_pos
-
-        rew = -np.linalg.norm(self.bad_agent_pos)
+#         next_pos = self.bad_agent_pos + self.apply_action(np.random.randint(5))
+#         next_pos = next_pos.clip(0, self.grid_size - 1)
+#         if self.grid[next_pos[0], next_pos[1]] == 0:
+#             self.bad_agent_pos = next_pos
+            
+        dists = []
+        for k in self.agents.keys():
+            dists.append(np.linalg.norm(self.agents[k]))
+        rew = - np.mean(dists)
         self.update_grid()
         self.num_steps += 1
         done = (self.num_steps == self.horizon)

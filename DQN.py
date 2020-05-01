@@ -38,16 +38,16 @@ class DQN(nn.Module):
 
     def __init__(self, state_size, hidden_size, output_size, n_actions, n_agents):
         super(DQN, self).__init__()
-        self.fc1 = nn.Linear(state_size, hidden_size)
+        self.fc1 = nn.Linear(state_size+(n_actions * n_agents), hidden_size)
         self.relu = nn.ReLU()
         self.fc2 = nn.Linear(hidden_size, hidden_size)
         self.fc3 = nn.Linear(hidden_size, output_size)
         self.n_actions = n_actions
         self.n_agents = n_agents
 
-    def forward(self,x):
-        out = self.relu(self.fc1(x))
+    def forward(self,x, a):
+        ct = torch.cat([x, a], 1)
+        out = self.relu(self.fc1(ct))
         out = self.relu(self.fc2(out))
         out = self.fc3(out)
-        out = out.view(out.shape[0], self.n_actions, self.n_agents)
         return out
