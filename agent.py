@@ -1,8 +1,18 @@
+from random import random, randint
+from collections import Counter
+import json
+import sys
+import argparse
+import time
+import asyncio
+import aiohttp
+from aiohttp import web
 import numpy as np
 
 class Agent:
 
-    def __init__(self,):
+    def __init__(self, index):
+        self._index = index
         pass
 
     def get_obs(self):
@@ -12,20 +22,37 @@ class Agent:
         """
         pass
 
-    def send_obs_request(self):
+    async def send_obs_request(self):
         """
         Client function (sends requests)
         :return:
         """
-        pass
+        timeout = aiohttp.ClientTimeout(5)
+        self._session = aiohttp.ClientSession(timeout = timeout)
+        
+        data = np.random.randint(65, 75)
+        await asyncio.sleep(random())
+        json_data = {
+                'id': (self._index, data),
+                'timestamp': time.time(),
+                'data': str(data)        
+            }
+        
+        print("SENDING", self._index)
+        await self._session.post(make_url(30000 + (self._index)), json=json_data)
+        print("SENT", self._index)
+        await self._session.close()
+        print("CLOSED", self._index)
 
-    def get_obs_request(self):
+    async def get_obs_request(self, get_obs_request):
         """
         Node function. If not leader, re-directs to leader.
         Calls preprepare function.
         :return:
         """
-        pass
+        j = await get_obs_request.json()
+        print(self._index, "GOT REQUEST", j)
+        return web.Response()
 
     def preprepare(self):
         """
@@ -56,4 +83,29 @@ class Agent:
         """
         pass
 
+def make_url(node):
+    return "http://{}:{}/{}".format("localhost", node, 'get_obs_request')
+  
+def main():
+    parser = argparse.ArgumentParser(description='PBFT Node')
+    parser.add_argument('-i', '--index', type=int, help='node index')
+    args = parser.parse_args()
+    
+    print("STARTING", args)
+    agent = Agent(args.index)
+    port = 30000 + args.index
 
+    time.sleep(np.random.randint(10))
+    asyncio.ensure_future(agent.send_obs_request())
+
+    app = web.Application()
+    app.add_routes([
+        web.post('/get_obs_request', agent.get_obs_request)
+        ])
+
+    
+    web.run_app(app, host="localhost", port=port, access_log=None)
+
+
+if __name__ == "__main__":
+    main()
