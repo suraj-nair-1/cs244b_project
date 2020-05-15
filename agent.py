@@ -17,6 +17,7 @@ class Agent:
         self._f = (self.num_agents - 1) // 3
         self.observations_recieved = None
         self._dont_send = False
+        self.value_to_send = None
 
     def get_obs(self):
         """
@@ -27,7 +28,7 @@ class Agent:
       
     async def get_reply(self, request):
         json_data = await request.json()
-        print(self._index, "REPLY:",  json_data)
+        print(self._index, "GOT REPLY:",  json_data)
         try:
             self._got_response.set()
         except:
@@ -53,18 +54,17 @@ class Agent:
         current_leader = 0
         self._got_response = asyncio.Event()
         
-        if not self._dont_send:
-            while 1:
-                try:
-                    await self._session.post(make_url(30000 + current_leader), json=json_data)
-                    await asyncio.wait_for(self._got_response.wait(), 5)
-                except:
-                    pass
-                else:
-                    print(self._index, "SENT!")
-                    is_sent = True
-                if is_sent:
-                    break
+        while 1:
+            try:
+                await self._session.post(make_url(30000 + current_leader), json=json_data)
+                await asyncio.wait_for(self._got_response.wait(), 5)
+            except:
+                pass
+            else:
+                print(self._index, "SENT!")
+                is_sent = True
+            if (is_sent) or self._dont_send:
+                break
 
         await self._session.close()
         print("CLOSED", self._index)
@@ -78,35 +78,40 @@ class Agent:
         j = await get_obs_request.json()
         if self.observations_recieved is None:
             self.observations_recieved = {}
+            self.time_started = time.time()
         self.observations_recieved[j['id'][0]] = j['data']
-        value_to_send = None
         print(self.observations_recieved)
-        if len(self.observations_recieved.keys()) >  ((2 * self._f) +1):
+        if (self.value_to_send is None) and (len(self.observations_recieved.keys()) >  ((2 * self._f) +1)):
             vals = (list(self.observations_recieved.values()))
-            value_to_send = np.median(list(map(int, vals)))
-            
+            self.value_to_send = np.median(list(map(int, vals)))
             #### TODO ^ REPLACE ABOVE WITH BETTER SCHEME BASED ON OBSERVATION DISTRIBUTION
+        
         
         ### TODO
         # DO PBFT STYLE CONSENSUS ON OBSERVATION
         # GET SOME RESULT
         ###
-        if value_to_send is not None:
+        if self.value_to_send is not None:
             reply_msg = {
                   'index': self._index,
-                  'data': value_to_send }
-            open_agents = list(range(self.num_agents))
+                  'data': self.value_to_send }
+            open_agents = list(self.observations_recieved.keys())
             while 1:
                 key = np.random.choice(open_agents)
                 if (key != self._index) and (key in open_agents):
                     try:
                         await self._session.post(make_url(30000 + key, endpoint='get_reply'), json=reply_msg)
                     except:
-                        print(open_agents)
+                        print(j['id'][0], key, open_agents)
                     else:
                         open_agents.remove(key)
+                        if key in self.observations_recieved.keys():
+                            self.observations_recieved.pop(key)
                 if len(open_agents) == 1:
                     break
+        ### BECAUSE NOT DOING PREPREPARE/PREPARE/COMMIT, LEADER DOESNT KNOW WHEN ALL AGENTS HAVE RESPONSE. 
+        ### SO RIGHT NOW THIS IS A HACKY FIX TO MAKE SURE IT CLOSES
+        if time.time() - self.time_started > 30:
             await self._session.post(make_url(30000 + self._index, endpoint='get_reply'), json=reply_msg)
         return web.Response()
 
