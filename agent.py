@@ -11,16 +11,28 @@ import numpy as np
 
 class Agent:
 
-    def __init__(self, index):
+    def __init__(self, index, n_agents):
         self._index = index
-        pass
+        self.num_agents = n_agents
+        self._f = (self.num_agents - 1) // 3
+        self.observations_recieved = None
+        self._dont_send = False
 
     def get_obs(self):
         """
         Client function
         :return:
         """
-        pass
+        return np.random.randint(65, 75)
+      
+    async def get_reply(self, request):
+        json_data = await request.json()
+        print(self._index, "REPLY:",  json_data)
+        try:
+            self._got_response.set()
+        except:
+            self._dont_send = True
+        return web.Response()
 
     async def send_obs_request(self):
         """
@@ -30,17 +42,30 @@ class Agent:
         timeout = aiohttp.ClientTimeout(5)
         self._session = aiohttp.ClientSession(timeout = timeout)
         
-        data = np.random.randint(65, 75)
+        is_sent = False
+        data = self.get_obs()
         await asyncio.sleep(random())
         json_data = {
                 'id': (self._index, data),
                 'timestamp': time.time(),
                 'data': str(data)        
             }
+        current_leader = 0
+        self._got_response = asyncio.Event()
         
-        print("SENDING", self._index)
-        await self._session.post(make_url(30000 + (self._index)), json=json_data)
-        print("SENT", self._index)
+        if not self._dont_send:
+            while 1:
+                try:
+                    await self._session.post(make_url(30000 + current_leader), json=json_data)
+                    await asyncio.wait_for(self._got_response.wait(), 5)
+                except:
+                    pass
+                else:
+                    print(self._index, "SENT!")
+                    is_sent = True
+                if is_sent:
+                    break
+
         await self._session.close()
         print("CLOSED", self._index)
 
@@ -51,7 +76,38 @@ class Agent:
         :return:
         """
         j = await get_obs_request.json()
-        print(self._index, "GOT REQUEST", j)
+        if self.observations_recieved is None:
+            self.observations_recieved = {}
+        self.observations_recieved[j['id'][0]] = j['data']
+        value_to_send = None
+        print(self.observations_recieved)
+        if len(self.observations_recieved.keys()) >  ((2 * self._f) +1):
+            vals = (list(self.observations_recieved.values()))
+            value_to_send = np.median(list(map(int, vals)))
+            
+            #### TODO ^ REPLACE ABOVE WITH BETTER SCHEME BASED ON OBSERVATION DISTRIBUTION
+        
+        ### TODO
+        # DO PBFT STYLE CONSENSUS ON OBSERVATION
+        # GET SOME RESULT
+        ###
+        if value_to_send is not None:
+            reply_msg = {
+                  'index': self._index,
+                  'data': value_to_send }
+            open_agents = list(range(self.num_agents))
+            while 1:
+                key = np.random.choice(open_agents)
+                if (key != self._index) and (key in open_agents):
+                    try:
+                        await self._session.post(make_url(30000 + key, endpoint='get_reply'), json=reply_msg)
+                    except:
+                        print(open_agents)
+                    else:
+                        open_agents.remove(key)
+                if len(open_agents) == 1:
+                    break
+            await self._session.post(make_url(30000 + self._index, endpoint='get_reply'), json=reply_msg)
         return web.Response()
 
     def preprepare(self):
@@ -83,24 +139,26 @@ class Agent:
         """
         pass
 
-def make_url(node):
-    return "http://{}:{}/{}".format("localhost", node, 'get_obs_request')
+def make_url(node, endpoint = 'get_obs_request'):
+    return "http://{}:{}/{}".format("localhost", node, endpoint)
   
 def main():
     parser = argparse.ArgumentParser(description='PBFT Node')
     parser.add_argument('-i', '--index', type=int, help='node index')
+    parser.add_argument('-n', '--num_agents', type=int, help='node index')
     args = parser.parse_args()
     
     print("STARTING", args)
-    agent = Agent(args.index)
+    agent = Agent(args.index, args.num_agents)
     port = 30000 + args.index
 
-    time.sleep(np.random.randint(10))
+#     time.sleep(np.random.randint(10))
     asyncio.ensure_future(agent.send_obs_request())
 
     app = web.Application()
     app.add_routes([
-        web.post('/get_obs_request', agent.get_obs_request)
+        web.post('/get_obs_request', agent.get_obs_request),
+        web.post('/get_reply', agent.get_reply)
         ])
 
     
