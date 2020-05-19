@@ -18,6 +18,7 @@ class Agent:
         self.observations_recieved = None
         self._dont_send = False
         self.value_to_send = None
+        self._network_timeout = 10
 
     def get_obs(self):
         """
@@ -34,6 +35,21 @@ class Agent:
         except:
             self._dont_send = True
         return web.Response()
+
+    async def _post(self, agents, endpoint, json_data):
+        '''
+        Broadcast json_data to all node in nodes with given command.
+        input:
+            agents: list of agents
+            endpoint: destination of message
+            json_data: Data in json format.
+        '''
+        if not self._session:
+            timeout = aiohttp.ClientTimeout(self._network_timeout)
+            self._session = aiohttp.ClientSession(timeout=timeout)
+        for i in agents:
+            if i != self._index:
+                _ = await self._session.post(make_url(i, endpoint), json=json_data)  ## QUESTION ABOUT THE 30000, QUESTION ABOUT LIST OF AGENTS
 
     async def send_obs_request(self):
         """
@@ -56,7 +72,8 @@ class Agent:
         
         while 1:
             try:
-                await self._session.post(make_url(30000 + current_leader), json=json_data)
+                #await self._session.post(make_url(30000 + current_leader), json=json_data)
+                await self._session.post(make_url(current_leader), json=json_data)
                 await asyncio.wait_for(self._got_response.wait(), 5)
             except:
                 pass
@@ -100,7 +117,8 @@ class Agent:
                 key = np.random.choice(open_agents)
                 if (key != self._index) and (key in open_agents):
                     try:
-                        await self._session.post(make_url(30000 + key, endpoint='get_reply'), json=reply_msg)
+                        #await self._session.post(make_url(30000 + key, endpoint='get_reply'), json=reply_msg)
+                        await self._session.post(make_url(key, endpoint='get_reply'), json=reply_msg)
                     except:
                         print(j['id'][0], key, open_agents)
                     else:
@@ -112,15 +130,36 @@ class Agent:
         ### BECAUSE NOT DOING PREPREPARE/PREPARE/COMMIT, LEADER DOESNT KNOW WHEN ALL AGENTS HAVE RESPONSE. 
         ### SO RIGHT NOW THIS IS A HACKY FIX TO MAKE SURE IT CLOSES
         if time.time() - self.time_started > 30:
-            await self._session.post(make_url(30000 + self._index, endpoint='get_reply'), json=reply_msg)
+            #await self._session.post(make_url(30000 + self._index, endpoint='get_reply'), json=reply_msg)
+            await self._session.post(make_url(self._index, endpoint='get_reply'), json=reply_msg)
         return web.Response()
 
-    def preprepare(self):
+    async def preprepare(self, json_data):
         """
-        Sends pre-prepare messages to all agents
+        Sends pre-prepare messages to all agents. Only the leader node executes this.
+
+        json_data: Json-transformed web request from client
+                {
+                    index: client id,
+                    data: "int"
+                }
         :return:
         """
-        pass
+        # increment sequence number
+        this_slot = str(self._next_propose_slot)
+        self._next_propose_slot = int(this_slot) + 1
+
+        print("Node {} on preprepare, propose at slot {}".format(self._index, int(this_slot)))
+
+        preprepare_msg = {
+            'leader': self._index,
+            'slot_no': this_slot,
+            'data': json_data,
+            'type': 'preprepare'
+        }
+
+        agents = np.arange(self.num_agents)
+        await self._post(agents, "PREPREPARE", preprepare_msg)
 
     def prepare(self):
         """
@@ -145,7 +184,7 @@ class Agent:
         pass
 
 def make_url(node, endpoint = 'get_obs_request'):
-    return "http://{}:{}/{}".format("localhost", node, endpoint)
+    return "http://{}:{}/{}".format("localhost", 30000+node, endpoint)
   
 def main():
     parser = argparse.ArgumentParser(description='PBFT Node')
