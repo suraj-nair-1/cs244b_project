@@ -20,6 +20,9 @@ class Agent:
         self.observations_recieved = None
         self._dont_send = False
         self.value_to_send = None
+        self._next_propose_slot_no = 0
+        self.slots = {}
+        self._sent = False
 
     def get_obs(self):
         """
@@ -34,6 +37,7 @@ class Agent:
         try:
             self._got_response.set()
         except:
+            print("dont send is true")
             self._dont_send = True
         return web.Response()
 
@@ -71,52 +75,111 @@ class Agent:
         await self._session.close()
         print("CLOSED", self._index)
 
+    async def close(self, agents):
+        """
+        Debugging function to close all connections. Called by leader.
+        :return:
+        """
+        for i in agents:
+            print("closing : ", i)
+            while 1:
+                try:
+                    await self._session.post(make_url(30000 + i, endpoint='get_reply'), json='{}')
+                    await asyncio.wait_for(self._got_response.wait(), 5)
+                except:
+                    pass
+                else:
+                    is_sent = True
+                    break
+            print("closed {}".format(i))
+        #print("CLOSING 0")
+        #await self._session.close()
+
+    async def post(self, agents, endpoint, json_data):
+        '''
+        Broadcast json_data to all node in nodes with given command.
+        input:
+            agents: list of agents
+            endpoint: destination of message
+            json_data: Data in json format.
+        '''
+
+        if not self._session:
+            print("not self._session")
+            timeout = aiohttp.ClientTimeout(self._network_timeout)
+            self._session = aiohttp.ClientSession(timeout=timeout)
+        #for i in agents:
+        #    if i != self._index:
+        #        print("{} posting to {}".format(self._index, i))
+        #        _ = await self._session.post(make_url(30000+i, endpoint), json=json_data)
+        for i in agents:
+            if i != self._index:
+                try:
+                    _ = await self._session.post(
+                        make_url(30000+i, endpoint), json=json_data)
+                except Exception as e:
+                    print("error in post: ", e)
+                    pass
+
+
     async def get_obs_request(self, get_obs_request):
         """
         Node function. If not leader, re-directs to leader.
         Calls preprepare function.
         :return:
         """
-        j = await get_obs_request.json()
-        if self.observations_recieved is None:
-            self.observations_recieved = {}
-            self.time_started = time.time()
-        self.observations_recieved[j['id'][0]] = j['data']
-        print(self.observations_recieved)
-        if (self.value_to_send is None) and (len(self.observations_recieved.keys()) > ((2 * self._f) + 1)):
-            vals = (list(self.observations_recieved.values()))
-            self.value_to_send = np.median(list(map(int, vals)))
-            #### TODO ^ REPLACE ABOVE WITH BETTER SCHEME BASED ON OBSERVATION DISTRIBUTION
+        if self._index != 0:  # if self is not leader redirect to leader
+            raise web.HTTPTemporaryRedirect(self.make_url(0, 'get_obs_request'))
+        else:
+            j = await get_obs_request.json()
+            if self.observations_recieved is None:
+                self.observations_recieved = {}
+                self.time_started = time.time()
+            self.observations_recieved[j['id'][0]] = j['data']
 
-        ### TODO
-        # DO PBFT STYLE CONSENSUS ON OBSERVATION
-        # GET SOME RESULT
-        ###
-        if self.value_to_send is not None:
-            reply_msg = {
-                'index': self._index,
-                'data': self.value_to_send}
-            open_agents = list(self.observations_recieved.keys())
-            while 1:
-                key = np.random.choice(open_agents)
-                if (key != self._index) and (key in open_agents):
-                    try:
-                        await self._session.post(make_url(30000 + key, endpoint='get_reply'), json=reply_msg)
-                    except:
-                        print(j['id'][0], key, open_agents)
-                    else:
-                        open_agents.remove(key)
-                        if key in self.observations_recieved.keys():
-                            self.observations_recieved.pop(key)
-                if len(open_agents) == 1:
-                    break
-        ### BECAUSE NOT DOING PREPREPARE/PREPARE/COMMIT, LEADER DOESNT KNOW WHEN ALL AGENTS HAVE RESPONSE.
-        ### SO RIGHT NOW THIS IS A HACKY FIX TO MAKE SURE IT CLOSES
-        if time.time() - self.time_started > 30:
-            await self._session.post(make_url(30000 + self._index, endpoint='get_reply'), json=reply_msg)
-        return web.Response()
+            if not self._sent: print(self.observations_recieved)
+            if (self.value_to_send is None) and (len(self.observations_recieved.keys()) > ((2 * self._f) + 1)):
+                vals = (list(self.observations_recieved.values()))
+                self.value_to_send = np.median(list(map(int, vals)))
+                #### TODO ^ REPLACE ABOVE WITH BETTER SCHEME BASED ON OBSERVATION DISTRIBUTION
 
-    async def preprepare(self, json_data):
+            ### TODO
+            # DO PBFT STYLE CONSENSUS ON OBSERVATION
+            # GET SOME RESULT
+            ###
+            #if self.value_to_send is not None:
+            #    reply_msg = {
+            #        'index': self._index,
+            #        'data': self.value_to_send}
+            #    open_agents = list(self.observations_recieved.keys())
+            #    while 1:
+            #        key = np.random.choice(open_agents)
+            #        if (key != self._index) and (key in open_agents):
+            #            try:
+            #                await self._session.post(make_url(30000 + key, endpoint='get_reply'), json=reply_msg)
+            #            except:
+            #                print(j['id'][0], key, open_agents)
+            #            else:
+            #                open_agents.remove(key)
+            #                if key in self.observations_recieved.keys():
+            #                    self.observations_recieved.pop(key)
+            #        if len(open_agents) == 1:
+            #            break
+            ### BECAUSE NOT DOING PREPREPARE/PREPARE/COMMIT, LEADER DOESNT KNOW WHEN ALL AGENTS HAVE RESPONSE.
+            ### SO RIGHT NOW THIS IS A HACKY FIX TO MAKE SURE IT CLOSES
+            #if time.time() - self.time_started > 30:
+            #    await self._session.post(make_url(30000 + self._index, endpoint='get_reply'), json=reply_msg)
+            if self.value_to_send is not None and not self._sent:
+                self._sent = True
+                print("VALUE TO SEND:", self.value_to_send)
+                request = {
+                    'index': self._index,
+                    'data': self.value_to_send}
+                #await self.post(np.arange(self.num_agents), "preprepare", request)
+                await self.preprepare(request)
+                return web.Response()
+
+    async def preprepare(self, request):
         """
         Sends pre-prepare messages to all agents. Only the leader node executes this.
 
@@ -129,38 +192,63 @@ class Agent:
         """
 
         # create slot object
-        this_slot_no = str(self._next_propose_slot)
-        self.slots[this_slot_no] = Slot()
+        this_slot_no = str(self._next_propose_slot_no)
+        self.slots[this_slot_no] = Slot(f=self._f)
 
         # increment slot number
         self._next_propose_slot_no = int(this_slot_no) + 1
 
-        print("Node {} on preprepare, propose at slot {}".format(self._index, int(this_slot_no)))
+        print("Agent {} on preprepare, propose at slot {}".format(self._index, int(this_slot_no)))
 
         preprepare_msg = {
             'leader': self._index,
             'proposal': {
-                this_slot_no: json_data
+                this_slot_no: request
             },
             'type': 'preprepare'
         }
 
-        agents = np.arange(self.num_agents)
-        await self._post(agents, "preprepare", preprepare_msg)
+        await self.post(np.arange(self.num_agents), "prepare", preprepare_msg)
 
-    def prepare(self):
+    async def prepare(self, preprepare_msg):
         """
         Takes pre-prepare message and if it looks good sends prepare messages to all agents
         :return:
         """
-        pass
+        print("Agent {} on prepare".format(self._index))
+        preprepare_msg = await preprepare_msg.json()
 
-    def commit(self):
+        #########################
+        # If data is very different from own data, then ask for leader change ###
+        # TODO
+        #########################
+
+
+        # If data seems valid, send prepare message to all agents
+        for slot_no, data in preprepare_msg['proposal'].items():
+            prepare_msg = {
+                'index': self._index,
+                'proposal': {
+                    slot_no: data
+                },
+                'type': 'prepare'
+            }
+
+            await self.post(np.arange(self.num_agents), 'commit', prepare_msg)
+
+        return web.Request()
+
+    async def commit(self, prepare_msg):
         """
         After getting more than 2f+1 prepare messages, send commit message to all agents
         :return:
         """
-        pass
+        prepare_msg = await prepare_msg.json()
+        if self._index != 0:
+            print("Agent {} on commit".format(self._index))
+            print("Agent {} closing".format(self._index))
+            await self._session.close()
+            print("Agent {} closed!".format(self._index))
 
     def reply(self):
         """
@@ -191,7 +279,10 @@ def main():
     app = web.Application()
     app.add_routes([
         web.post('/get_obs_request', agent.get_obs_request),
-        web.post('/get_reply', agent.get_reply)
+        web.post('/get_reply', agent.get_reply),
+        web.post('/preprepare', agent.preprepare),
+        web.post('/prepare', agent.prepare),
+        web.post('/commit', agent.commit),
     ])
 
     web.run_app(app, host="localhost", port=port, access_log=None)
