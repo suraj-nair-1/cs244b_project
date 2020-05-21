@@ -236,7 +236,7 @@ class Agent:
 
             await self.post(np.arange(self.num_agents), 'commit', prepare_msg)
 
-        return web.Request()
+        return web.Response()
 
     async def commit(self, prepare_msg):
         """
@@ -244,11 +244,12 @@ class Agent:
         :return:
         """
         prepare_msg = await prepare_msg.json()
-        if self._index != 0:
-            print("Agent {} on commit".format(self._index))
-            print("Agent {} closing".format(self._index))
-            await self._session.close()
-            print("Agent {} closed!".format(self._index))
+        print("Agent {} on commit".format(self._index))
+        #if self._index != 0:
+        #    print("Agent {} on commit".format(self._index))
+        #    print("Agent {} closing".format(self._index))
+        #    await self._session.close()
+        #    print("Agent {} closed!".format(self._index))
 
     def reply(self):
         """
