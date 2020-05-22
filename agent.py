@@ -8,7 +8,7 @@ import asyncio
 import aiohttp
 from aiohttp import web
 import numpy as np
-from slot import Slot
+#from slot import Slot
 
 
 class Agent:
@@ -21,7 +21,8 @@ class Agent:
         self._dont_send = False
         self.value_to_send = None
         self._next_propose_slot_no = 0
-        self.slots = {}
+        self.prepare_slots = {}  # keeps track of who has proposed which slot; (key:slot #, value:list of agents)
+        self.commit_slots = {}   # keeps track of who has committed which slot
         self._sent = False
 
     def get_obs(self):
@@ -175,7 +176,6 @@ class Agent:
                 request = {
                     'index': self._index,
                     'data': self.value_to_send}
-                #await self.post(np.arange(self.num_agents), "preprepare", request)
                 await self.preprepare(request)
                 return web.Response()
 
@@ -193,7 +193,8 @@ class Agent:
 
         # create slot object
         this_slot_no = str(self._next_propose_slot_no)
-        self.slots[this_slot_no] = Slot(f=self._f)
+        self.prepare_slots[this_slot_no] = []
+        self.commit_slots[this_slot_no] = []
 
         # increment slot number
         self._next_propose_slot_no = int(this_slot_no) + 1
@@ -244,20 +245,29 @@ class Agent:
         :return:
         """
         prepare_msg = await prepare_msg.json()
-        print("Agent {} on commit".format(self._index))
-        #if self._index != 0:
-        #    print("Agent {} on commit".format(self._index))
-        #    print("Agent {} closing".format(self._index))
-        #    await self._session.close()
-        #    print("Agent {} closed!".format(self._index))
+        print("Agent {} on commit; received prepare msg from {}".format(self._index, prepare_msg['index']))
 
-    def reply(self):
+        for slot_no, data in prepare_msg['proposal'].items():
+            self.prepare_slots[slot_no].append(self._index)
+
+            if len(self.prepare_slots) > 2*self._f + 1:
+                commit_msg = {
+                    'index': self._index,
+                    'proposal': {
+                        slot_no: data
+                    },
+                    'type': 'commit'
+                }
+                await self.post(np.arange(self.num_agents), 'reply', commit_msg)
+
+    async def reply(self, commit_msg):
         """
         After getting more than 2f+1 commit messages, saves commit certificate,
         save commit observation, and send reply back to agent who proposed chosen observation
         :return:
         """
-        pass
+        commit_msg = await commit_msg.json()
+        print("Agent {} on reply".format(self._index))
 
 
 def make_url(node, endpoint='get_obs_request'):
@@ -284,6 +294,7 @@ def main():
         web.post('/preprepare', agent.preprepare),
         web.post('/prepare', agent.prepare),
         web.post('/commit', agent.commit),
+        web.post('/reply', agent.reply),
     ])
 
     web.run_app(app, host="localhost", port=port, access_log=None)
