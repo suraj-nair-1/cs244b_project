@@ -113,13 +113,13 @@ class Agent:
         #        print("{} posting to {}".format(self._index, i))
         #        _ = await self._session.post(make_url(30000+i, endpoint), json=json_data)
         for i in agents:
-            if i != self._index:
-                try:
-                    _ = await self._session.post(
-                        make_url(30000+i, endpoint), json=json_data)
-                except Exception as e:
-                    print("error in post: ", e)
-                    pass
+            #if i != self._index:
+            try:
+                _ = await self._session.post(
+                    make_url(30000+i, endpoint), json=json_data)
+            except Exception as e:
+                print("error in post: ", e)
+                pass
 
 
     async def get_obs_request(self, get_obs_request):
