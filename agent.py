@@ -21,8 +21,11 @@ class Agent:
         self._dont_send = False
         self.value_to_send = None
         self._next_propose_slot_no = 0
-        self.prepare_slots = {}  # keeps track of who has proposed which slot; (key:slot #, value:list of agents)
-        self.commit_slots = {}   # keeps track of who has committed which slot
+        self.prepare_slots = {}    # keeps track of who has proposed which slot; (key:slot #, value:list of agents)
+        self.commit_slots = {}     # keeps track of who has committed which slot
+        self.prepare_sent = {}     # keeps track of which prepare messages have been already sent
+        self.commit_sent = {}      # keeps track of which commit messages have been already sent
+        self.permanent_record = {} # permanent record of chose observatin
         self._sent = False
 
     def get_obs(self):
@@ -31,26 +34,19 @@ class Agent:
         :return:
         """
         return np.random.randint(65, 75)
-
-    async def get_reply(self, request):
-        json_data = await request.json()
-        print(self._index, "GOT REPLY:", json_data)
-        try:
-            self._got_response.set()
-        except:
-            print("dont send is true")
-            self._dont_send = True
-        return web.Response()
+      
 
     async def send_obs_request(self):
         """
         Client function (sends requests)
         :return:
         """
-        timeout = aiohttp.ClientTimeout(5)
+        # Initialize session
+        timeout = aiohttp.ClientTimeout(1)
         self._session = aiohttp.ClientSession(timeout=timeout)
+        self._closed = False
 
-        is_sent = False
+        # Get Observations
         data = self.get_obs()
         await asyncio.sleep(random())
         json_data = {
@@ -58,9 +54,11 @@ class Agent:
             'timestamp': time.time(),
             'data': str(data)
         }
+        # TODO: Implement rotating view change
         current_leader = 0
         self._got_response = asyncio.Event()
 
+        # Try and send observation
         while 1:
             try:
                 await self._session.post(make_url(30000 + current_leader), json=json_data)
@@ -68,13 +66,11 @@ class Agent:
             except:
                 pass
             else:
-                print(self._index, "SENT!")
-                is_sent = True
-            if (is_sent) or self._dont_send:
-                break
-
-        await self._session.close()
-        print("CLOSED", self._index)
+                if not self._closed:
+                    await self._session.close()
+                    print("CLOSED", self._index)
+                    self._closed = True
+                    break
 
     async def close(self, agents):
         """
@@ -93,8 +89,6 @@ class Agent:
                     is_sent = True
                     break
             print("closed {}".format(i))
-        #print("CLOSING 0")
-        #await self._session.close()
 
     async def post(self, agents, endpoint, json_data):
         '''
@@ -104,22 +98,15 @@ class Agent:
             endpoint: destination of message
             json_data: Data in json format.
         '''
-
         if not self._session:
             print("not self._session")
-            timeout = aiohttp.ClientTimeout(self._network_timeout)
+            timeout = aiohttp.ClientTimeout(1)
             self._session = aiohttp.ClientSession(timeout=timeout)
-        #for i in agents:
-        #    if i != self._index:
-        #        print("{} posting to {}".format(self._index, i))
-        #        _ = await self._session.post(make_url(30000+i, endpoint), json=json_data)
         for i in agents:
-            #if i != self._index:
             try:
                 _ = await self._session.post(
                     make_url(30000+i, endpoint), json=json_data)
             except Exception as e:
-                print("error in post: ", e)
                 pass
 
 
@@ -144,37 +131,11 @@ class Agent:
                 self.value_to_send = np.median(list(map(int, vals)))
                 #### TODO ^ REPLACE ABOVE WITH BETTER SCHEME BASED ON OBSERVATION DISTRIBUTION
 
-            ### TODO
-            # DO PBFT STYLE CONSENSUS ON OBSERVATION
-            # GET SOME RESULT
-            ###
-            #if self.value_to_send is not None:
-            #    reply_msg = {
-            #        'index': self._index,
-            #        'data': self.value_to_send}
-            #    open_agents = list(self.observations_recieved.keys())
-            #    while 1:
-            #        key = np.random.choice(open_agents)
-            #        if (key != self._index) and (key in open_agents):
-            #            try:
-            #                await self._session.post(make_url(30000 + key, endpoint='get_reply'), json=reply_msg)
-            #            except:
-            #                print(j['id'][0], key, open_agents)
-            #            else:
-            #                open_agents.remove(key)
-            #                if key in self.observations_recieved.keys():
-            #                    self.observations_recieved.pop(key)
-            #        if len(open_agents) == 1:
-            #            break
-            ### BECAUSE NOT DOING PREPREPARE/PREPARE/COMMIT, LEADER DOESNT KNOW WHEN ALL AGENTS HAVE RESPONSE.
-            ### SO RIGHT NOW THIS IS A HACKY FIX TO MAKE SURE IT CLOSES
-            #if time.time() - self.time_started > 30:
-            #    await self._session.post(make_url(30000 + self._index, endpoint='get_reply'), json=reply_msg)
             if self.value_to_send is not None and not self._sent:
                 self._sent = True
                 print("VALUE TO SEND:", self.value_to_send)
                 request = {
-                    'index': self._index,
+                    'leader': self._index,
                     'data': self.value_to_send}
                 await self.preprepare(request)
                 return web.Response()
@@ -193,14 +154,10 @@ class Agent:
 
         # create slot object
         this_slot_no = str(self._next_propose_slot_no)
-        self.prepare_slots[this_slot_no] = []
-        self.commit_slots[this_slot_no] = []
-
         # increment slot number
         self._next_propose_slot_no = int(this_slot_no) + 1
 
         print("Agent {} on preprepare, propose at slot {}".format(self._index, int(this_slot_no)))
-
         preprepare_msg = {
             'leader': self._index,
             'proposal': {
@@ -216,7 +173,6 @@ class Agent:
         Takes pre-prepare message and if it looks good sends prepare messages to all agents
         :return:
         """
-        print("Agent {} on prepare".format(self._index))
         preprepare_msg = await preprepare_msg.json()
 
         #########################
@@ -234,7 +190,7 @@ class Agent:
                 },
                 'type': 'prepare'
             }
-
+            print("Agent {} sent prepare".format(self._index))
             await self.post(np.arange(self.num_agents), 'commit', prepare_msg)
 
         return web.Response()
@@ -245,12 +201,15 @@ class Agent:
         :return:
         """
         prepare_msg = await prepare_msg.json()
-        print("Agent {} on commit; received prepare msg from {}".format(self._index, prepare_msg['index']))
+        assert(prepare_msg['type'] == 'prepare')
 
         for slot_no, data in prepare_msg['proposal'].items():
-            self.prepare_slots[slot_no].append(self._index)
+            if slot_no not in self.prepare_slots.keys():
+                self.prepare_slots[slot_no] = []
+            self.prepare_slots[slot_no].append(prepare_msg['index'])
 
-            if len(self.prepare_slots) > 2*self._f + 1:
+            if (len(self.prepare_slots[slot_no]) > 2*self._f + 1) and (slot_no not in self.prepare_sent.keys()):
+                self.prepare_sent[slot_no] = True
                 commit_msg = {
                     'index': self._index,
                     'proposal': {
@@ -258,18 +217,38 @@ class Agent:
                     },
                     'type': 'commit'
                 }
+                print("Agent {} sent commit".format(self._index))
                 await self.post(np.arange(self.num_agents), 'reply', commit_msg)
 
     async def reply(self, commit_msg):
         """
         After getting more than 2f+1 commit messages, saves commit certificate,
-        save commit observation, and send reply back to agent who proposed chosen observation
+        save commit observation
         :return:
         """
         commit_msg = await commit_msg.json()
-        print("Agent {} on reply".format(self._index))
+        assert(commit_msg['type'] == 'commit')
+        
+        for slot_no, data in commit_msg['proposal'].items():
+            if slot_no not in self.commit_slots.keys():
+                self.commit_slots[slot_no] = []
+            self.commit_slots[slot_no].append(commit_msg['index'])
+            
+            if (len(self.commit_slots[slot_no]) > 2*self._f + 1)  and (slot_no not in self.commit_sent.keys()):
+                print("Agent {} committed".format(self._index), data)
+                self.commit_sent[slot_no] = True
+                self.permanent_record[slot_no] = data
+                try:
+                    self._got_response.set()
+                except:
+                    pass
+                  
+                if not self._closed:
+                    await self._session.close()
+                    print("CLOSED", self._index)
+                    self._closed = True
 
-
+                    
 def make_url(node, endpoint='get_obs_request'):
     return "http://{}:{}/{}".format("localhost", node, endpoint)
 
@@ -290,7 +269,7 @@ def main():
     app = web.Application()
     app.add_routes([
         web.post('/get_obs_request', agent.get_obs_request),
-        web.post('/get_reply', agent.get_reply),
+#         web.post('/get_reply', agent.get_reply),
         web.post('/preprepare', agent.preprepare),
         web.post('/prepare', agent.prepare),
         web.post('/commit', agent.commit),
