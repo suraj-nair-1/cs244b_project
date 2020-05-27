@@ -8,7 +8,6 @@ import asyncio
 import aiohttp
 from aiohttp import web
 import numpy as np
-#from slot import Slot
 
 
 class Agent:
@@ -21,11 +20,11 @@ class Agent:
         self._dont_send = False
         self.value_to_send = None
         self._next_propose_slot_no = 0
-        self.prepare_slots = {}    # keeps track of who has proposed which slot; (key:slot #, value:list of agents)
-        self.commit_slots = {}     # keeps track of who has committed which slot
-        self.prepare_sent = {}     # keeps track of which prepare messages have been already sent
-        self.commit_sent = {}      # keeps track of which commit messages have been already sent
-        self.permanent_record = {} # permanent record of chose observatin
+        self.prepare_slots = {}  # keeps track of who has proposed which slot; (key:slot #, value:list of agents)
+        self.commit_slots = {}  # keeps track of who has committed which slot
+        self.prepare_sent = {}  # keeps track of which prepare messages have been already sent
+        self.commit_sent = {}  # keeps track of which commit messages have been already sent
+        self.permanent_record = {}  # permanent record of chose observation
         self._sent = False
 
     def get_obs(self):
@@ -34,7 +33,6 @@ class Agent:
         :return:
         """
         return np.random.randint(65, 75)
-      
 
     async def send_obs_request(self):
         """
@@ -105,10 +103,9 @@ class Agent:
         for i in agents:
             try:
                 _ = await self._session.post(
-                    make_url(30000+i, endpoint), json=json_data)
+                    make_url(30000 + i, endpoint), json=json_data)
             except Exception as e:
                 pass
-
 
     async def get_obs_request(self, get_obs_request):
         """
@@ -180,7 +177,6 @@ class Agent:
         # TODO
         #########################
 
-
         # If data seems valid, send prepare message to all agents
         for slot_no, data in preprepare_msg['proposal'].items():
             prepare_msg = {
@@ -201,14 +197,14 @@ class Agent:
         :return:
         """
         prepare_msg = await prepare_msg.json()
-        assert(prepare_msg['type'] == 'prepare')
+        assert (prepare_msg['type'] == 'prepare')
 
         for slot_no, data in prepare_msg['proposal'].items():
             if slot_no not in self.prepare_slots.keys():
                 self.prepare_slots[slot_no] = []
             self.prepare_slots[slot_no].append(prepare_msg['index'])
 
-            if (len(self.prepare_slots[slot_no]) > 2*self._f + 1) and (slot_no not in self.prepare_sent.keys()):
+            if (len(self.prepare_slots[slot_no]) > 2 * self._f + 1) and (slot_no not in self.prepare_sent.keys()):
                 self.prepare_sent[slot_no] = True
                 commit_msg = {
                     'index': self._index,
@@ -227,14 +223,14 @@ class Agent:
         :return:
         """
         commit_msg = await commit_msg.json()
-        assert(commit_msg['type'] == 'commit')
-        
+        assert (commit_msg['type'] == 'commit')
+
         for slot_no, data in commit_msg['proposal'].items():
             if slot_no not in self.commit_slots.keys():
                 self.commit_slots[slot_no] = []
             self.commit_slots[slot_no].append(commit_msg['index'])
-            
-            if (len(self.commit_slots[slot_no]) > 2*self._f + 1)  and (slot_no not in self.commit_sent.keys()):
+
+            if (len(self.commit_slots[slot_no]) > 2 * self._f + 1) and (slot_no not in self.commit_sent.keys()):
                 print("Agent {} committed".format(self._index), data)
                 self.commit_sent[slot_no] = True
                 self.permanent_record[slot_no] = data
@@ -242,16 +238,55 @@ class Agent:
                     self._got_response.set()
                 except:
                     pass
-                  
+
                 if not self._closed:
                     await self._session.close()
                     print("CLOSED", self._index)
                     self._closed = True
 
-                    
+
+class FaultyAgent1(Agent):
+    """
+    Doesn't send prepare messages
+    """
+
+    def __init__(self, index, n_agents):
+        print("Initializing Faulty Agent 1")
+        super().__init__(index, n_agents)
+
+    async def prepare(self, preprepare_msg):
+        return web.Response()
+
+
+class FaultyAgent2(Agent):
+    """
+    Doesn't send commit messages
+    """
+
+    def __init__(self, index, n_agents):
+        print("Initializing Faulty Agent 1")
+        super().__init__(index, n_agents)
+
+    async def commit(self, prepare_msg):
+        pass
+
+
 def make_url(node, endpoint='get_obs_request'):
     return "http://{}:{}/{}".format("localhost", node, endpoint)
 
+
+def create_agent(args, is_byzantine=False):
+    if not is_byzantine:
+        return Agent(args.index, args.num_agents)
+    else:
+        F = int(np.floor((args.num_agents - 1) / 3))
+        if args.index < args.num_agents - F:
+            print("regular index", args.index)
+            agent = Agent(args.index, args.num_agents)
+        else:
+            print("faulty index", args.index)
+            agent = FaultyAgent2(args.index, args.num_agents)
+        return agent
 
 def main():
     parser = argparse.ArgumentParser(description='PBFT Node')
@@ -260,7 +295,7 @@ def main():
     args = parser.parse_args()
 
     print("STARTING", args)
-    agent = Agent(args.index, args.num_agents)
+    agent = create_agent(args, is_byzantine=True)
     port = 30000 + args.index
 
     #     time.sleep(np.random.randint(10))
@@ -269,7 +304,7 @@ def main():
     app = web.Application()
     app.add_routes([
         web.post('/get_obs_request', agent.get_obs_request),
-#         web.post('/get_reply', agent.get_reply),
+        #         web.post('/get_reply', agent.get_reply),
         web.post('/preprepare', agent.preprepare),
         web.post('/prepare', agent.prepare),
         web.post('/commit', agent.commit),
