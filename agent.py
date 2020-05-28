@@ -19,6 +19,7 @@ class Agent:
         self.observations_recieved = None
         self._dont_send = False
         self.value_to_send = None
+        self.obs = None
         self._next_propose_slot_no = 0
         self.prepare_slots = {}  # keeps track of who has proposed which slot; (key:slot #, value:list of agents)
         self.commit_slots = {}  # keeps track of who has committed which slot
@@ -26,6 +27,8 @@ class Agent:
         self.commit_sent = {}  # keeps track of which commit messages have been already sent
         self.permanent_record = {}  # permanent record of chose observation
         self._sent = False
+        self.leader = 0  # leader index initialized to 0
+        self.reply_slots = {}
 
     def get_obs(self):
         """
@@ -46,6 +49,7 @@ class Agent:
 
         # Get Observations
         data = self.get_obs()
+        self.obs = data
         await asyncio.sleep(random())
         json_data = {
             'id': (self._index, data),
@@ -53,7 +57,7 @@ class Agent:
             'data': str(data)
         }
         # TODO: Implement rotating view change
-        current_leader = 0
+        current_leader = self.leader
         self._got_response = asyncio.Event()
 
         # Try and send observation
@@ -70,23 +74,23 @@ class Agent:
                     self._closed = True
                     break
 
-    async def close(self, agents):
-        """
-        Debugging function to close all connections. Called by leader.
-        :return:
-        """
-        for i in agents:
-            print("closing : ", i)
-            while 1:
-                try:
-                    await self._session.post(make_url(30000 + i, endpoint='get_reply'), json='{}')
-                    await asyncio.wait_for(self._got_response.wait(), 5)
-                except:
-                    pass
-                else:
-                    is_sent = True
-                    break
-            print("closed {}".format(i))
+    # async def close(self, agents):
+    #    """
+    #    Debugging function to close all connections. Called by leader.
+    #    :return:
+    #    """
+    #    for i in agents:
+    #        print("closing : ", i)
+    #        while 1:
+    #            try:
+    #                await self._session.post(make_url(30000 + i, endpoint='get_reply'), json='{}')
+    #                await asyncio.wait_for(self._got_response.wait(), 5)
+    #            except:
+    #                pass
+    #            else:
+    #                is_sent = True
+    #                break
+    #        print("closed {}".format(i))
 
     async def post(self, agents, endpoint, json_data):
         '''
@@ -113,8 +117,8 @@ class Agent:
         Calls preprepare function.
         :return:
         """
-        if self._index != 0:  # if self is not leader redirect to leader
-            raise web.HTTPTemporaryRedirect(self.make_url(0, 'get_obs_request'))
+        if self._index != self.leader:  # if self is not leader redirect to leader
+            raise web.HTTPTemporaryRedirect(make_url(0, 'get_obs_request'))
         else:
             j = await get_obs_request.json()
             if self.observations_recieved is None:
@@ -234,15 +238,36 @@ class Agent:
                 print("Agent {} committed".format(self._index), data)
                 self.commit_sent[slot_no] = True
                 self.permanent_record[slot_no] = data
+                # try:
+                #    self._got_response.set()
+                # except:
+                #    pass
+                # if not self._closed:
+                #    await self._session.close()
+                #    print("CLOSED", self._index)
+                #    self._closed = True
+
+        # leader change
+        try:
+            num_sent_commits = 0
+            for slot_no, data in commit_msg['proposal'].items():  # count committed slots
+                if self.commit_sent[slot_no]:
+                    num_sent_commits += 1
+            if num_sent_commits == len(
+                    commit_msg['proposal'].keys()):  # if every slot has been committed, change leader
+                self.leader = (self.leader + 1) % self.num_agents
+                print("Agent {} leader changed to {}!".format(self._index, self.leader))
                 try:
                     self._got_response.set()
                 except:
                     pass
-
                 if not self._closed:
                     await self._session.close()
                     print("CLOSED", self._index)
                     self._closed = True
+
+        except:
+            pass
 
 
 class FaultyAgent1(Agent):
@@ -288,6 +313,7 @@ def create_agent(args, is_byzantine=False):
             agent = FaultyAgent2(args.index, args.num_agents)
         return agent
 
+
 def main():
     parser = argparse.ArgumentParser(description='PBFT Node')
     parser.add_argument('-i', '--index', type=int, help='node index')
@@ -295,7 +321,7 @@ def main():
     args = parser.parse_args()
 
     print("STARTING", args)
-    agent = create_agent(args, is_byzantine=True)
+    agent = create_agent(args, is_byzantine=False)
     port = 30000 + args.index
 
     #     time.sleep(np.random.randint(10))
