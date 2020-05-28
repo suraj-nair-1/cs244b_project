@@ -23,12 +23,14 @@ class Agent:
         self._next_propose_slot_no = 0
         self.prepare_slots = {}  # keeps track of who has proposed which slot; (key:slot #, value:list of agents)
         self.commit_slots = {}  # keeps track of who has committed which slot
+        self.leader_change_slots = {}  # keeps track of who has requested a leader change for which slot
         self.prepare_sent = {}  # keeps track of which prepare messages have been already sent
         self.commit_sent = {}  # keeps track of which commit messages have been already sent
         self.permanent_record = {}  # permanent record of chose observation
         self._sent = False
         self.leader = 0  # leader index initialized to 0
         self.reply_slots = {}
+        self.epsilon = 10    # threshold for obs being different; requests leader change if above this threshold.
 
     def get_obs(self):
         """
@@ -50,6 +52,8 @@ class Agent:
         # Get Observations
         data = self.get_obs()
         self.obs = data
+
+
         await asyncio.sleep(random())
         json_data = {
             'id': (self._index, data),
@@ -73,24 +77,6 @@ class Agent:
                     print("CLOSED", self._index)
                     self._closed = True
                     break
-
-    # async def close(self, agents):
-    #    """
-    #    Debugging function to close all connections. Called by leader.
-    #    :return:
-    #    """
-    #    for i in agents:
-    #        print("closing : ", i)
-    #        while 1:
-    #            try:
-    #                await self._session.post(make_url(30000 + i, endpoint='get_reply'), json='{}')
-    #                await asyncio.wait_for(self._got_response.wait(), 5)
-    #            except:
-    #                pass
-    #            else:
-    #                is_sent = True
-    #                break
-    #        print("closed {}".format(i))
 
     async def post(self, agents, endpoint, json_data):
         '''
@@ -132,6 +118,10 @@ class Agent:
                 self.value_to_send = np.median(list(map(int, vals)))
                 #### TODO ^ REPLACE ABOVE WITH BETTER SCHEME BASED ON OBSERVATION DISTRIBUTION
 
+            # testing faulty leader
+            self.obs = 1             # the case where only the leader's observation is faulty, but proposed obs is not;
+                                     # everyone should still successfully commit the proposed value
+            self.value_to_send = self.obs   # the case where leader's observation and proposed observation is faulty.
             if self.value_to_send is not None and not self._sent:
                 self._sent = True
                 print("VALUE TO SEND:", self.value_to_send)
@@ -176,28 +166,36 @@ class Agent:
         """
         preprepare_msg = await preprepare_msg.json()
 
-        #########################
-        # If data is very different from own data, then ask for leader change ###
-        # TODO
-        #########################
-
-        # If data seems valid, send prepare message to all agents
         for slot_no, data in preprepare_msg['proposal'].items():
-            prepare_msg = {
-                'index': self._index,
-                'proposal': {
-                    slot_no: data
-                },
-                'type': 'prepare'
-            }
-            print("Agent {} sent prepare".format(self._index))
-            await self.post(np.arange(self.num_agents), 'commit', prepare_msg)
+            if np.abs(self.obs - data['data']) > self.epsilon:
+                # request leader change
+                print("Agent {} requests leader change! proposed obs: {}, own obs: {}".format(self._index, data['data'], self.obs))
+                # If data is very different from own data, then ask for leader change ###
+                leader_change_msg = {
+                    'index': self._index,
+                    'proposal': {
+                        slot_no: data
+                    },
+                    'type': 'leader_change'
+                }
+                await self.post(np.arange(self.num_agents), 'leader_change', leader_change_msg)
+            else:
+                # If data seems valid, send prepare message to all agents
+                prepare_msg = {
+                    'index': self._index,
+                    'proposal': {
+                        slot_no: data
+                    },
+                    'type': 'prepare'
+                }
+                print("Agent {} sent prepare".format(self._index))
+                await self.post(np.arange(self.num_agents), 'commit', prepare_msg)
 
         return web.Response()
 
     async def commit(self, prepare_msg):
         """
-        After getting more than 2f+1 prepare messages, send commit message to all agents
+        After getting at least 2f+1 prepare messages, send commit message to all agents
         :return:
         """
         prepare_msg = await prepare_msg.json()
@@ -208,7 +206,7 @@ class Agent:
                 self.prepare_slots[slot_no] = []
             self.prepare_slots[slot_no].append(prepare_msg['index'])
 
-            if (len(self.prepare_slots[slot_no]) > 2 * self._f + 1) and (slot_no not in self.prepare_sent.keys()):
+            if (len(self.prepare_slots[slot_no]) >= 2 * self._f + 1) and (slot_no not in self.prepare_sent.keys()):
                 self.prepare_sent[slot_no] = True
                 commit_msg = {
                     'index': self._index,
@@ -222,7 +220,7 @@ class Agent:
 
     async def reply(self, commit_msg):
         """
-        After getting more than 2f+1 commit messages, saves commit certificate,
+        After getting at least 2f+1 commit messages, saves commit certificate,
         save commit observation
         :return:
         """
@@ -234,7 +232,7 @@ class Agent:
                 self.commit_slots[slot_no] = []
             self.commit_slots[slot_no].append(commit_msg['index'])
 
-            if (len(self.commit_slots[slot_no]) > 2 * self._f + 1) and (slot_no not in self.commit_sent.keys()):
+            if (len(self.commit_slots[slot_no]) >= 2 * self._f + 1) and (slot_no not in self.commit_sent.keys()):
                 print("Agent {} committed".format(self._index), data)
                 self.commit_sent[slot_no] = True
                 self.permanent_record[slot_no] = data
@@ -268,6 +266,34 @@ class Agent:
 
         except:
             pass
+
+    async def leader_change(self, leader_change_msg):
+        """
+        Waits for 2f+1 votes before changing leaders.
+        :param leader_change_msg:
+        :return:
+        """
+        leader_change_msg = await leader_change_msg.json()
+        assert (leader_change_msg['type'] == 'leader_change')
+
+        for slot_no, data in leader_change_msg['proposal'].items():
+            assert (data['leader'] == self.leader)
+            print("Agent {} on leader change for slot no {}! Curr leader is {}".format(self._index, slot_no, self.leader))
+            if slot_no not in self.leader_change_slots.keys():
+                self.leader_change_slots[slot_no] = []
+            self.leader_change_slots[slot_no].append(leader_change_msg['index'])
+
+            if (len(self.leader_change_slots[slot_no]) >= 2 * self._f + 1):
+                self.leader = (self.leader + 1) % self.num_agents
+                print("Agent {} leader changed to {}!".format(self._index, self.leader))
+                try:
+                    self._got_response.set()
+                except:
+                    pass
+                if not self._closed:
+                    await self._session.close()
+                    print("CLOSED", self._index)
+                    self._closed = True
 
 
 class FaultyAgent1(Agent):
@@ -335,6 +361,7 @@ def main():
         web.post('/prepare', agent.prepare),
         web.post('/commit', agent.commit),
         web.post('/reply', agent.reply),
+        web.post('/leader_change', agent.leader_change),
     ])
 
     web.run_app(app, host="localhost", port=port, access_log=None)
