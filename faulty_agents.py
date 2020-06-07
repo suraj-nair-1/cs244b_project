@@ -6,9 +6,9 @@ class F_Leader1(Agent):
     Doesn't send observation request
     """
 
-    def __init__(self, index, n_agents):
+    def __init__(self, index, n_agents, method):
         print("Initializing Faulty Leader 1")
-        super().__init__(index, n_agents)
+        super().__init__(index, n_agents, method)
 
     async def get_obs_request(self, get_obs_request):
         if self._index != self.leader:  # if self is not leader redirect to leader
@@ -25,9 +25,9 @@ class F_Leader2(Agent):
     TODO: DEFINE FAULTY OBSERVATION BASED ON GROUND TRUTH VALUE
     """
 
-    def __init__(self, index, n_agents):
+    def __init__(self, index, n_agents, method):
         print("Initializing Faulty Leader 2")
-        super().__init__(index, n_agents)
+        super().__init__(index, n_agents, method)
 
     async def get_obs_request(self, get_obs_request):
         """
@@ -62,9 +62,9 @@ class F_Observation(Agent):
     Sends faulty observation
     """
 
-    def __init__(self, index, n_agents):
+    def __init__(self, index, n_agents, method):
         print("Initializing Faulty Observation")
-        super().__init__(index, n_agents)
+        super().__init__(index, n_agents, method)
 
         ## Get agent obs (Noisy version of true obs)
     def get_obs(self):
@@ -80,9 +80,9 @@ class F_Prepare(Agent):
     Doesn't send prepare messages
     """
 
-    def __init__(self, index, n_agents):
+    def __init__(self, index, n_agents, method):
         print("Initializing Faulty Prepare")
-        super().__init__(index, n_agents)
+        super().__init__(index, n_agents, method)
 
     async def prepare(self, preprepare_msg):
         self.log("Faulty agent {} on preprepare. Not doing anything!".format(self._index))
@@ -94,9 +94,9 @@ class F_Commit(Agent):
     Doesn't send commit messages
     """
 
-    def __init__(self, index, n_agents):
+    def __init__(self, index, n_agents, method):
         print("Initializing Faulty Commit")
-        super().__init__(index, n_agents)
+        super().__init__(index, n_agents, method)
 
     async def commit(self, prepare_msg):
         self.log("Faulty agent {} on commit. Not doing anything!".format(self._index))
@@ -107,9 +107,9 @@ class F_Reply(Agent):
     Doesn't save commit obs and doesn't change leader
     """
 
-    def __init__(self, index, n_agents):
+    def __init__(self, index, n_agents, method):
         print("Initializing Faulty Reply")
-        super().__init__(index, n_agents)
+        super().__init__(index, n_agents, method)
 
     async def reply(self, commit_msg):
         self.log("Faulty agent {} on reply. Not doing anything!".format(self._index))
@@ -120,16 +120,16 @@ class F_LeaderChange(Agent):
     Doesn't participate in leader change
     """
 
-    def __init__(self, index, n_agents):
+    def __init__(self, index, n_agents, method):
         print("Initializing Faulty Leader Change")
-        super().__init__(index, n_agents)
+        super().__init__(index, n_agents, method)
 
     async def leader_change(self, leader_change_msg):
         self.log("Faulty agent {} on leader change. Not doing anything!".format(self._index))
 
 
 #faulty_agents_list = np.array([F_Leader1, F_Leader2, F_Prepare, F_Commit, F_LeaderChange])
-faulty_agents_list = np.array([F_Leader2,  F_LeaderChange])
+faulty_agents_list = np.array([F_Leader2,  F_Observation])
 #faulty_agents_list = np.array([F_Prepare,  F_Commit])
 
 
