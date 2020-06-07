@@ -17,12 +17,12 @@ def create_agent(args, is_byzantine=False):
         return Agent(args.index, args.num_agents)
     else:
 
-        #if args.num_faulty >= (args.num_agents-1)//3:  # if args.num_faulty is invalid, just use maximum # faulty agents
-        #    args.num_faulty = ((args.num_agents-1)//3) - 1
+        if args.num_faulty >= (args.num_agents-1)//3:  # if args.num_faulty is invalid, just use maximum # faulty agents
+            args.num_faulty = max(((args.num_agents-1)//3) - 1, 0)
         if args.index < args.num_faulty:
             print("faulty index", args.index)
-            #FaultyAgent = np.random.choice(faulty_agents_list, 1)[0]   # randomly picks a faulty agent
-            FaultyAgent = faulty_agents_list[args.index]                # picks faulty agent in order
+            FaultyAgent = np.random.choice(faulty_agents_list, 1)[0]   # randomly picks a faulty agent
+#             FaultyAgent = faulty_agents_list[args.index]                # picks faulty agent in order
             agent = FaultyAgent(args.index, args.num_agents)
         else:
             print("regular index", args.index)
@@ -55,6 +55,7 @@ def main():
         web.post('/commit', agent.commit),
         web.post('/reply', agent.reply),
         web.post('/reopen', agent.reopen),
+        web.get('/get_results', agent.get_results),
         web.post('/setobs', agent.setobs),
         web.post('/leader_change', agent.leader_change),
     ])
