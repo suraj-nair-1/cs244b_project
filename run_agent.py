@@ -17,8 +17,8 @@ def create_agent(args, is_byzantine=False):
         return Agent(args.index, args.num_agents)
     else:
 
-        #if args.num_faulty >= (args.num_agents-1)//3:  # if args.num_faulty is invalid, just use maximum # faulty agents
-        #    args.num_faulty = ((args.num_agents-1)//3) - 1
+        if args.num_faulty >= (args.num_agents-1)//3:  # if args.num_faulty is invalid, just use maximum # faulty agents
+            args.num_faulty = max(((args.num_agents-1)//3) - 1, 0)
         if args.index < args.num_faulty:
             print("faulty index", args.index)
             #FaultyAgent = np.random.choice(faulty_agents_list, 1)[0]   # randomly picks a faulty agent
@@ -40,7 +40,7 @@ def main():
     args = parser.parse_args()
 
     print("STARTING", args)
-    agent = create_agent(args, is_byzantine=False)
+    agent = create_agent(args, is_byzantine=True)
     port = 30000 + args.index
 
     time.sleep(np.random.randint(2))

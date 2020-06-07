@@ -13,7 +13,7 @@ class F_Leader1(Agent):
     async def get_obs_request(self, get_obs_request):
         if self._index != self.leader:  # if self is not leader redirect to leader
             self.log("Faulty agent {} on get_obs_req. Not leader so redirecting!".format(self._index))
-            raise web.HTTPTemporaryRedirect(make_url(0, 'get_obs_request'))
+            raise web.HTTPTemporaryRedirect(make_url(self.leader, 'get_obs_request'))
         else:
             self.log("Faulty agent {} on get_obs_req. Is leader, but not sending an obs!".format(self._index))
             pass
@@ -37,7 +37,7 @@ class F_Leader2(Agent):
         """
         if self._index != self.leader:  # if self is not leader redirect to leader
             self.log("Faulty agent {} on get_obs_req. Not leader so redirecting!".format(self._index))
-            raise web.HTTPTemporaryRedirect(make_url(0, 'get_obs_request'))
+            raise web.HTTPTemporaryRedirect(make_url(self.leader, 'get_obs_request'))
         else:
             ####################
             # testing faulty leader
@@ -111,4 +111,12 @@ class F_LeaderChange(Agent):
 
 
 #faulty_agents_list = np.array([F_Leader1, F_Leader2, F_Prepare, F_Commit, F_LeaderChange])
-faulty_agents_list = np.array([F_Leader2,  F_LeaderChange])
+faulty_agents_list = np.array([F_Leader1,  F_Commit])
+#faulty_agents_list = np.array([F_Prepare,  F_Commit])
+
+
+# Single timestep:
+# -FPrepare, FCommit, FLeader1, FLeader2
+
+# Multi timestep
+# -FLeaderChange, FReply

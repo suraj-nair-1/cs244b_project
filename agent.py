@@ -76,10 +76,25 @@ class Agent:
         self.sent_data = {
             'id': (self._index, self.obs),
             'timestamp': self.sent_time,
-            'data': str(self.obs)
+            'data': str(self.obs),
+            'leader': self.leader
         }
         while 1:
             try:
+                #self.log("curr time - sent time {}".format(time.time()-self.sent_time))
+                if time.time()-self.sent_time > 2:
+                    # request leader change
+                    self.log("Agent {} requests leader change bc of timeout! Curr leader is {}".format(self._index, self.leader))
+                    # If data is very different from own data, then ask for leader change ###
+                    leader_change_msg = {
+                        'index': self._index,
+                        'proposal': {
+                            0: self.sent_data
+                        },
+                        'type': 'leader_change'
+                    }
+                    await self.post(np.arange(self.num_agents), 'leader_change', leader_change_msg)
+
                 await self._session.post(make_url(30000 + self.leader, "get_obs_request"), json= self.sent_data)
                 await asyncio.wait_for(self._got_response.wait(), 5)
             except:
@@ -133,7 +148,7 @@ class Agent:
         :return:
         """
         if self._index != self.leader:  # if self is not leader redirect to leader
-            raise web.HTTPTemporaryRedirect(make_url(0, 'get_obs_request'))
+            raise web.HTTPTemporaryRedirect(make_url(self.leader, 'get_obs_request'))
         else:
             j = await get_obs_request.json()
             if self.observations_recieved is None:
@@ -142,7 +157,7 @@ class Agent:
             self.observations_recieved[j['id'][0]] = j['data']
             
             if not self._sent: print(self.observations_recieved)
-            if (self.value_to_send is None) and (len(self.observations_recieved.keys()) > ((2 * self._f) + 1)):
+            if (self.value_to_send is None) and (len(self.observations_recieved.keys()) >= ((2 * self._f) + 1)):   #### CHANGED THIS TO >=
                 vals = (list(self.observations_recieved.values()))
                 self.value_to_send = np.median(list(map(int, vals)))
                 #### TODO ^ REPLACE ABOVE WITH BETTER SCHEME BASED ON OBSERVATION DISTRIBUTION
@@ -204,7 +219,7 @@ class Agent:
                 self.obs = self.get_obs()
             if np.abs(self.obs - data['data']) > self.epsilon:
                 # request leader change
-                self.log("Agent {} requests leader change! proposed obs: {}, own obs: {}".format(self._index, data['data'], self.obs))
+                self.log("Agent {} requests leader change bc of bad data! proposed obs: {}, own obs: {}".format(self._index, data['data'], self.obs))
                 # If data is very different from own data, then ask for leader change ###
                 leader_change_msg = {
                     'index': self._index,
@@ -275,6 +290,9 @@ class Agent:
                 self.permanent_record[slot_no] = data
                 self.commit_true_counts.append([self.true_state, data["data"]])
                 np.save(f"logs/results_{self._index}.npy",  np.array(self.commit_true_counts))
+
+                ### ADDING THIS LINE ###
+                #np.save(f"logs/nagents{self.num_agents}_{self._index}.npy",  np.array(self.commit_true_counts))
 
                 ## leader increment
                 try:
