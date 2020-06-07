@@ -1,0 +1,6 @@
+logs/
+.ipynb_checkpoints/
+__pycache__/
+ims/
+*.npy
+*.txt
