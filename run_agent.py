@@ -40,7 +40,8 @@ def main():
     args = parser.parse_args()
 
     print("STARTING", args)
-    agent = create_agent(args, is_byzantine=False)
+    agent = create_agent(args, is_byzantine=True)
+    agent.log(str(type(agent)))
     port = 30000 + args.index
 
     time.sleep(np.random.randint(2))

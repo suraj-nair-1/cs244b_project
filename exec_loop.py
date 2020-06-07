@@ -73,7 +73,7 @@ def main():
         futures = [send_msg(sess, make_url(30000 + i, "reopen"), {}) for i in range(args.num_agents)]
         loop.run_until_complete(asyncio.gather(*futures))
     #         time.sleep(1)
-
+    sess.close()
     time.sleep(3)
     for pr in p:
         pr.terminate()
