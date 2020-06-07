@@ -31,53 +31,83 @@ class Agent:
         self.leader = 0  # leader index initialized to 0
         self.reply_slots = {}
         self.epsilon = 10    # threshold for obs being different; requests leader change if above this threshold.
+        # Initialize session
+        timeout = aiohttp.ClientTimeout(1)
+        self._session = aiohttp.ClientSession(timeout=timeout)
+        self._closed = False
+        self.commit_true_counts = []
 
+    ## Per Agent Logging
+    def log(self, st):
+        f = open(f"logs/agent_{self._index}.txt", "a")
+        f.write(st+"\n")
+        f.close()
+        
+    ## Set the agent obs to the true obs
+    async def setobs(self, set_request):
+        j = await set_request.json()
+        self.true_state = j['obs']
+        self.log(f"SET OBS TO {self.true_state}")
+        
+    ## Get agent obs (Noisy version of true obs)
     def get_obs(self):
         """
         Client function
         :return:
         """
-        return np.random.randint(65, 75)
+        return self.true_state + np.random.randint(-5, 5)
 
-    async def send_obs_request(self):
+    ## Send An Obs Request to leader
+    async def send_obs_request(self, send_request):
         """
         Client function (sends requests)
         :return:
         """
-        # Initialize session
-        timeout = aiohttp.ClientTimeout(1)
-        self._session = aiohttp.ClientSession(timeout=timeout)
-        self._closed = False
-
         # Get Observations
-        data = self.get_obs()
-        self.obs = data
+        if self.obs is None:
+            self.obs = self.get_obs()
 
 
         await asyncio.sleep(random())
-        json_data = {
-            'id': (self._index, data),
-            'timestamp': time.time(),
-            'data': str(data)
-        }
-        # TODO: Implement rotating view change
-        current_leader = self.leader
         self._got_response = asyncio.Event()
 
         # Try and send observation
+        self.sent_time = time.time()
+        self.sent_data = {
+            'id': (self._index, self.obs),
+            'timestamp': self.sent_time,
+            'data': str(self.obs)
+        }
         while 1:
             try:
-                await self._session.post(make_url(30000 + current_leader), json=json_data)
+                await self._session.post(make_url(30000 + self.leader, "get_obs_request"), json= self.sent_data)
                 await asyncio.wait_for(self._got_response.wait(), 5)
             except:
-                pass
+                if self._closed:
+                    break
             else:
                 if not self._closed:
                     await self._session.close()
-                    print("CLOSED", self._index)
+                    self.log(f"CLOSED {self._index}")
                     self._closed = True
-                    break
+                break
 
+    ## Send a message
+    async def send_msg(self, session, url, data):
+        await session.post(url, json=data)
+        
+    ## Reopen Closed Session (Done Every Episode)
+    async def reopen(self, data):
+        timeout = aiohttp.ClientTimeout(1)
+        self._session = aiohttp.ClientSession(timeout=timeout)
+        self._closed = False
+        self.observations_recieved = None
+        self._dont_send = False
+        self.value_to_send = None
+        self.obs = None
+        self._sent = False
+       
+    ## Post to all Agents (Parallelized)
     async def post(self, agents, endpoint, json_data):
         '''
         Broadcast json_data to all node in nodes with given command.
@@ -87,15 +117,14 @@ class Agent:
             json_data: Data in json format.
         '''
         if not self._session:
-            print("not self._session")
+            self.log("not self._session")
             timeout = aiohttp.ClientTimeout(1)
             self._session = aiohttp.ClientSession(timeout=timeout)
-        for i in agents:
-            try:
-                _ = await self._session.post(
-                    make_url(30000 + i, endpoint), json=json_data)
-            except Exception as e:
-                pass
+        futures = [self.send_msg(self._session, make_url(30000 + i, endpoint), json_data) for i in agents]
+        try:
+            await asyncio.gather(*futures)
+        except Exception as e:
+            pass
 
     async def get_obs_request(self, get_obs_request):
         """
@@ -111,7 +140,7 @@ class Agent:
                 self.observations_recieved = {}
                 self.time_started = time.time()
             self.observations_recieved[j['id'][0]] = j['data']
-
+            
             if not self._sent: print(self.observations_recieved)
             if (self.value_to_send is None) and (len(self.observations_recieved.keys()) > ((2 * self._f) + 1)):
                 vals = (list(self.observations_recieved.values()))
@@ -119,12 +148,13 @@ class Agent:
                 #### TODO ^ REPLACE ABOVE WITH BETTER SCHEME BASED ON OBSERVATION DISTRIBUTION
 
             # testing faulty leader
-            self.obs = 1             # the case where only the leader's observation is faulty, but proposed obs is not;
-                                     # everyone should still successfully commit the proposed value
-            self.value_to_send = self.obs   # the case where leader's observation and proposed observation is faulty.
+            if self._index == 0:
+                self.obs = 1             # the case where only the leader's observation is faulty, but proposed obs is not;
+                                         # everyone should still successfully commit the proposed value
+                self.value_to_send = self.obs   # the case where leader's observation and proposed observation is faulty.
             if self.value_to_send is not None and not self._sent:
                 self._sent = True
-                print("VALUE TO SEND:", self.value_to_send)
+                self.log(f"VALUE TO SEND: {self.value_to_send}")
                 request = {
                     'leader': self._index,
                     'data': self.value_to_send}
@@ -142,13 +172,12 @@ class Agent:
                 }
         :return:
         """
-
         # create slot object
-        this_slot_no = str(self._next_propose_slot_no)
+        this_slot_no = str(self._next_propose_slot_no + 1)
         # increment slot number
-        self._next_propose_slot_no = int(this_slot_no) + 1
+        self._next_propose_slot_no = int(this_slot_no)
 
-        print("Agent {} on preprepare, propose at slot {}".format(self._index, int(this_slot_no)))
+        self.log("Agent {} on preprepare, propose at slot {}".format(self._index, int(this_slot_no)))
         preprepare_msg = {
             'leader': self._index,
             'proposal': {
@@ -165,11 +194,17 @@ class Agent:
         :return:
         """
         preprepare_msg = await preprepare_msg.json()
-
+        self.log(f"Got PrePrep From {preprepare_msg['leader']}, current leader is {self.leader}")
+        if preprepare_msg['leader'] != self.leader:
+            return web.Response()
         for slot_no, data in preprepare_msg['proposal'].items():
+          
+            self._next_propose_slot_no = max(self._next_propose_slot_no, int(slot_no))
+            if self.obs is None:
+                self.obs = self.get_obs()
             if np.abs(self.obs - data['data']) > self.epsilon:
                 # request leader change
-                print("Agent {} requests leader change! proposed obs: {}, own obs: {}".format(self._index, data['data'], self.obs))
+                self.log("Agent {} requests leader change! proposed obs: {}, own obs: {}".format(self._index, data['data'], self.obs))
                 # If data is very different from own data, then ask for leader change ###
                 leader_change_msg = {
                     'index': self._index,
@@ -188,7 +223,7 @@ class Agent:
                     },
                     'type': 'prepare'
                 }
-                print("Agent {} sent prepare".format(self._index))
+                self.log("Agent {} sent prepare".format(self._index))
                 await self.post(np.arange(self.num_agents), 'commit', prepare_msg)
 
         return web.Response()
@@ -215,7 +250,7 @@ class Agent:
                     },
                     'type': 'commit'
                 }
-                print("Agent {} sent commit".format(self._index))
+                self.log("Agent {} sent commit".format(self._index))
                 await self.post(np.arange(self.num_agents), 'reply', commit_msg)
 
     async def reply(self, commit_msg):
@@ -224,48 +259,43 @@ class Agent:
         save commit observation
         :return:
         """
+        if self._closed:
+            return web.Response()
         commit_msg = await commit_msg.json()
         assert (commit_msg['type'] == 'commit')
-
+        self.log(f"Got Commit From {commit_msg['index']}, current leader is {self.leader}")
         for slot_no, data in commit_msg['proposal'].items():
             if slot_no not in self.commit_slots.keys():
                 self.commit_slots[slot_no] = []
             self.commit_slots[slot_no].append(commit_msg['index'])
 
             if (len(self.commit_slots[slot_no]) >= 2 * self._f + 1) and (slot_no not in self.commit_sent.keys()):
-                print("Agent {} committed".format(self._index), data)
+                self.log("Agent {} committed".format(self._index) + str(data))
                 self.commit_sent[slot_no] = True
                 self.permanent_record[slot_no] = data
-                # try:
-                #    self._got_response.set()
-                # except:
-                #    pass
-                # if not self._closed:
-                #    await self._session.close()
-                #    print("CLOSED", self._index)
-                #    self._closed = True
+                self.commit_true_counts.append([self.true_state, data["data"]])
+                np.save(f"logs/results_{self._index}.npy",  np.array(self.commit_true_counts))
 
-        # leader change
-        try:
-            num_sent_commits = 0
-            for slot_no, data in commit_msg['proposal'].items():  # count committed slots
-                if self.commit_sent[slot_no]:
-                    num_sent_commits += 1
-            if num_sent_commits == len(
-                    commit_msg['proposal'].keys()):  # if every slot has been committed, change leader
-                self.leader = (self.leader + 1) % self.num_agents
-                print("Agent {} leader changed to {}!".format(self._index, self.leader))
+                ## leader increment
                 try:
-                    self._got_response.set()
+                    num_sent_commits = 0
+                    for slot_no, data in commit_msg['proposal'].items():  # count committed slots
+                        if self.commit_sent[slot_no]:
+                            num_sent_commits += 1
+                    if num_sent_commits == len(
+                            commit_msg['proposal'].keys()):  # if every slot has been committed, change leader
+                        self.leader = (self.leader + 1) % self.num_agents
+                        self.log("Due To Commit, Agent {} leader changed to {}!".format(self._index, self.leader))
+                        if not self._closed:
+                            self._closed = True
+                            await self._session.close()
+                            self.log(f"CLOSED {self._index}")
+                        try:
+                            self._got_response.set()
+                        except:
+                            pass
                 except:
                     pass
-                if not self._closed:
-                    await self._session.close()
-                    print("CLOSED", self._index)
-                    self._closed = True
-
-        except:
-            pass
 
     async def leader_change(self, leader_change_msg):
         """
@@ -273,27 +303,21 @@ class Agent:
         :param leader_change_msg:
         :return:
         """
+        if self._closed:
+            return web.Response()
         leader_change_msg = await leader_change_msg.json()
         assert (leader_change_msg['type'] == 'leader_change')
 
         for slot_no, data in leader_change_msg['proposal'].items():
-            assert (data['leader'] == self.leader)
-            print("Agent {} on leader change for slot no {}! Curr leader is {}".format(self._index, slot_no, self.leader))
-            if slot_no not in self.leader_change_slots.keys():
-                self.leader_change_slots[slot_no] = []
-            self.leader_change_slots[slot_no].append(leader_change_msg['index'])
+            if data['leader'] == self.leader:
+                self.log("Agent {} on leader change for slot no {}! Curr leader is {}".format(self._index, slot_no, self.leader))
+                if slot_no not in self.leader_change_slots.keys():
+                    self.leader_change_slots[slot_no] = set()
+                self.leader_change_slots[slot_no].add(leader_change_msg['index'])
 
-            if (len(self.leader_change_slots[slot_no]) >= 2 * self._f + 1):
-                self.leader = (self.leader + 1) % self.num_agents
-                print("Agent {} leader changed to {}!".format(self._index, self.leader))
-                try:
-                    self._got_response.set()
-                except:
-                    pass
-                if not self._closed:
-                    await self._session.close()
-                    print("CLOSED", self._index)
-                    self._closed = True
+                if (len(self.leader_change_slots[slot_no]) >= 2 * self._f + 1):
+                    self.leader = (self.leader + 1) % self.num_agents
+                    self.log("Agent {} leader changed to {}!".format(self._index, self.leader))
 
 
 class FaultyAgent1(Agent):
@@ -322,7 +346,7 @@ class FaultyAgent2(Agent):
         pass
 
 
-def make_url(node, endpoint='get_obs_request'):
+def make_url(node, endpoint=None):
     return "http://{}:{}/{}".format("localhost", node, endpoint)
 
 
@@ -350,17 +374,18 @@ def main():
     agent = create_agent(args, is_byzantine=False)
     port = 30000 + args.index
 
-    #     time.sleep(np.random.randint(10))
-    asyncio.ensure_future(agent.send_obs_request())
+    time.sleep(np.random.randint(2))
 
     app = web.Application()
     app.add_routes([
+        web.post('/send_obs_request', agent.send_obs_request),
         web.post('/get_obs_request', agent.get_obs_request),
-        #         web.post('/get_reply', agent.get_reply),
         web.post('/preprepare', agent.preprepare),
         web.post('/prepare', agent.prepare),
         web.post('/commit', agent.commit),
         web.post('/reply', agent.reply),
+        web.post('/reopen', agent.reopen),
+        web.post('/setobs', agent.setobs),
         web.post('/leader_change', agent.leader_change),
     ])
 
