@@ -57,6 +57,24 @@ class F_Leader2(Agent):
                 return web.Response()
 
 
+class F_Observation(Agent):
+    """
+    Sends faulty observation
+    """
+
+    def __init__(self, index, n_agents):
+        print("Initializing Faulty Observation")
+        super().__init__(index, n_agents)
+
+        ## Get agent obs (Noisy version of true obs)
+    def get_obs(self):
+        """
+        Client function
+        :return:
+        """
+        return self.true_state + self.epsilon*5
+
+
 class F_Prepare(Agent):
     """
     Doesn't send prepare messages
@@ -110,8 +128,8 @@ class F_LeaderChange(Agent):
         self.log("Faulty agent {} on leader change. Not doing anything!".format(self._index))
 
 
-faulty_agents_list = np.array([F_Leader1, F_Leader2, F_Prepare, F_Commit, F_LeaderChange])
-# faulty_agents_list = np.array([F_Leader1,  F_Commit])
+#faulty_agents_list = np.array([F_Leader1, F_Leader2, F_Prepare, F_Commit, F_LeaderChange])
+faulty_agents_list = np.array([F_Leader2,  F_LeaderChange])
 #faulty_agents_list = np.array([F_Prepare,  F_Commit])
 
 
