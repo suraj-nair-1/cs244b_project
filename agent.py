@@ -35,14 +35,18 @@ class Agent:
         timeout = aiohttp.ClientTimeout(1)
         self._session = aiohttp.ClientSession(timeout=timeout)
         self._closed = False
-        self.commit_true_counts = []
+        self.commited_vals = []
 
     ## Per Agent Logging
     def log(self, st):
         f = open(f"logs/agent_{self._index}.txt", "a")
         f.write(st+"\n")
         f.close()
-        
+    
+    ## Get all commits
+    async def get_results(self, get_request):
+        return web.json_response({"res" : list(self.commited_vals)})
+    
     ## Set the agent obs to the true obs
     async def setobs(self, set_request):
         j = await set_request.json()
@@ -89,7 +93,7 @@ class Agent:
                     leader_change_msg = {
                         'index': self._index,
                         'proposal': {
-                            0: self.sent_data
+                            -1: self.sent_data
                         },
                         'type': 'leader_change'
                     }
@@ -288,8 +292,8 @@ class Agent:
                 self.log("Agent {} committed".format(self._index) + str(data))
                 self.commit_sent[slot_no] = True
                 self.permanent_record[slot_no] = data
-                self.commit_true_counts.append([self.true_state, data["data"]])
-                np.save(f"logs/results_{self._index}.npy",  np.array(self.commit_true_counts))
+                self.commited_vals.append(data["data"])
+#                 np.save(f"logs/results_{self._index}.npy",  np.array(self.commit_true_counts))
 
                 ### ADDING THIS LINE ###
                 #np.save(f"logs/nagents{self.num_agents}_{self._index}.npy",  np.array(self.commit_true_counts))
@@ -336,6 +340,8 @@ class Agent:
                 if (len(self.leader_change_slots[slot_no]) >= 2 * self._f + 1):
                     self.leader = (self.leader + 1) % self.num_agents
                     self.log("Agent {} leader changed to {}!".format(self._index, self.leader))
+                    if slot_no == -1:
+                        self.leader_change_slots[slot_no] = set()
 
 
 #class FaultyAgent1(Agent):
