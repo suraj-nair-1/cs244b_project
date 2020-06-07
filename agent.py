@@ -148,10 +148,10 @@ class Agent:
                 #### TODO ^ REPLACE ABOVE WITH BETTER SCHEME BASED ON OBSERVATION DISTRIBUTION
 
             # testing faulty leader
-            if self._index == 0:
-                self.obs = 1             # the case where only the leader's observation is faulty, but proposed obs is not;
+            #if self._index == 0:
+            #    self.obs = 1             # the case where only the leader's observation is faulty, but proposed obs is not;
                                          # everyone should still successfully commit the proposed value
-                self.value_to_send = self.obs   # the case where leader's observation and proposed observation is faulty.
+            #    self.value_to_send = self.obs   # the case where leader's observation and proposed observation is faulty.
             if self.value_to_send is not None and not self._sent:
                 self._sent = True
                 self.log(f"VALUE TO SEND: {self.value_to_send}")
@@ -320,77 +320,77 @@ class Agent:
                     self.log("Agent {} leader changed to {}!".format(self._index, self.leader))
 
 
-class FaultyAgent1(Agent):
-    """
-    Doesn't send prepare messages
-    """
-
-    def __init__(self, index, n_agents):
-        print("Initializing Faulty Agent 1")
-        super().__init__(index, n_agents)
-
-    async def prepare(self, preprepare_msg):
-        return web.Response()
-
-
-class FaultyAgent2(Agent):
-    """
-    Doesn't send commit messages
-    """
-
-    def __init__(self, index, n_agents):
-        print("Initializing Faulty Agent 1")
-        super().__init__(index, n_agents)
-
-    async def commit(self, prepare_msg):
-        pass
+#class FaultyAgent1(Agent):
+#    """
+#    Doesn't send prepare messages
+#    """
+#
+#    def __init__(self, index, n_agents):
+#        print("Initializing Faulty Agent 1")
+#        super().__init__(index, n_agents)
+#
+#    async def prepare(self, preprepare_msg):
+#        return web.Response()
+#
+#
+#class FaultyAgent2(Agent):
+#    """
+#    Doesn't send commit messages
+#    """
+#
+#    def __init__(self, index, n_agents):
+#        print("Initializing Faulty Agent 2")
+#        super().__init__(index, n_agents)
+#
+#    async def commit(self, prepare_msg):
+#        pass
 
 
 def make_url(node, endpoint=None):
     return "http://{}:{}/{}".format("localhost", node, endpoint)
 
 
-def create_agent(args, is_byzantine=False):
-    if not is_byzantine:
-        return Agent(args.index, args.num_agents)
-    else:
-        F = int(np.floor((args.num_agents - 1) / 3))
-        if args.index < args.num_agents - F:
-            print("regular index", args.index)
-            agent = Agent(args.index, args.num_agents)
-        else:
-            print("faulty index", args.index)
-            agent = FaultyAgent2(args.index, args.num_agents)
-        return agent
+#def create_agent(args, is_byzantine=False):
+#    if not is_byzantine:
+#        return Agent(args.index, args.num_agents)
+#    else:
+#        F = int(np.floor((args.num_agents - 1) / 3))
+#        if args.index < args.num_agents - F:
+#            print("regular index", args.index)
+#            agent = Agent(args.index, args.num_agents)
+#        else:
+#            print("faulty index", args.index)
+#            agent = FaultyAgent2(args.index, args.num_agents)
+#        return agent
 
 
-def main():
-    parser = argparse.ArgumentParser(description='PBFT Node')
-    parser.add_argument('-i', '--index', type=int, help='node index')
-    parser.add_argument('-n', '--num_agents', type=int, help='node index')
-    args = parser.parse_args()
+#def main():
+#    parser = argparse.ArgumentParser(description='PBFT Node')
+#    parser.add_argument('-i', '--index', type=int, help='node index')
+#    parser.add_argument('-n', '--num_agents', type=int, help='node index')
+#    args = parser.parse_args()
+#
+#    print("STARTING", args)
+#    agent = create_agent(args, is_byzantine=False)
+#    port = 30000 + args.index
+#
+#    time.sleep(np.random.randint(2))
+#
+#    app = web.Application()
+#    app.add_routes([
+#        web.post('/send_obs_request', agent.send_obs_request),
+#        web.post('/get_obs_request', agent.get_obs_request),
+#        web.post('/preprepare', agent.preprepare),
+#        web.post('/prepare', agent.prepare),
+#        web.post('/commit', agent.commit),
+#        web.post('/reply', agent.reply),
+#        web.post('/reopen', agent.reopen),
+#        web.post('/setobs', agent.setobs),
+#        web.post('/leader_change', agent.leader_change),
+#    ])
+#
+#    web.run_app(app, host="localhost", port=port, access_log=None)
 
-    print("STARTING", args)
-    agent = create_agent(args, is_byzantine=False)
-    port = 30000 + args.index
 
-    time.sleep(np.random.randint(2))
-
-    app = web.Application()
-    app.add_routes([
-        web.post('/send_obs_request', agent.send_obs_request),
-        web.post('/get_obs_request', agent.get_obs_request),
-        web.post('/preprepare', agent.preprepare),
-        web.post('/prepare', agent.prepare),
-        web.post('/commit', agent.commit),
-        web.post('/reply', agent.reply),
-        web.post('/reopen', agent.reopen),
-        web.post('/setobs', agent.setobs),
-        web.post('/leader_change', agent.leader_change),
-    ])
-
-    web.run_app(app, host="localhost", port=port, access_log=None)
-
-
-if __name__ == "__main__":
-    main()
+#if __name__ == "__main__":
+#    main()
