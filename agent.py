@@ -12,9 +12,10 @@ import numpy as np
 
 class Agent:
 
-    def __init__(self, index, n_agents):
+    def __init__(self, index, n_agents, method="LF+AF"):
         self._index = index
         self.num_agents = n_agents
+        self.method = method
         self._f = (self.num_agents - 1) // 3
         self.observations_recieved = None
         self._dont_send = False
@@ -39,7 +40,7 @@ class Agent:
 
     ## Per Agent Logging
     def log(self, st):
-        f = open(f"logs/agent_{self._index}.txt", "a")
+        f = open(f"logs/agent/agent_{self._index}.txt", "a")
         f.write(st+"\n")
         f.close()
     
@@ -93,11 +94,18 @@ class Agent:
                     leader_change_msg = {
                         'index': self._index,
                         'proposal': {
-                            -1: self.sent_data
+                            str(self.leader)+"t": self.sent_data
                         },
                         'type': 'leader_change'
                     }
                     await self.post(np.arange(self.num_agents), 'leader_change', leader_change_msg)
+                    self.sent_time = time.time()
+                    self.sent_data = {
+                        'id': (self._index, self.obs),
+                        'timestamp': self.sent_time,
+                        'data': str(self.obs),
+                        'leader': self.leader
+                    }
 
                 await self._session.post(make_url(30000 + self.leader, "get_obs_request"), json= self.sent_data)
                 await asyncio.wait_for(self._got_response.wait(), 5)
@@ -161,16 +169,14 @@ class Agent:
             self.observations_recieved[j['id'][0]] = j['data']
             
             if not self._sent: print(self.observations_recieved)
-            if (self.value_to_send is None) and (len(self.observations_recieved.keys()) >= ((2 * self._f) + 1)):   #### CHANGED THIS TO >=
+            if ("LF" not in self.method) and (self.value_to_send is None) and (len(self.observations_recieved.keys()) >= ((2 * self._f) + 1)):
+                vals = (list(self.observations_recieved.values()))
+                self.value_to_send = list(map(int, vals))[0]
+            elif (self.value_to_send is None) and (len(self.observations_recieved.keys()) >= ((2 * self._f) + 1)):   #### CHANGED THIS TO >=
                 vals = (list(self.observations_recieved.values()))
                 self.value_to_send = np.median(list(map(int, vals)))
                 #### TODO ^ REPLACE ABOVE WITH BETTER SCHEME BASED ON OBSERVATION DISTRIBUTION
 
-            # testing faulty leader
-            #if self._index == 0:
-            #    self.obs = 1             # the case where only the leader's observation is faulty, but proposed obs is not;
-                                         # everyone should still successfully commit the proposed value
-            #    self.value_to_send = self.obs   # the case where leader's observation and proposed observation is faulty.
             if self.value_to_send is not None and not self._sent:
                 self._sent = True
                 self.log(f"VALUE TO SEND: {self.value_to_send}")
@@ -221,7 +227,7 @@ class Agent:
             self._next_propose_slot_no = max(self._next_propose_slot_no, int(slot_no))
             if self.obs is None:
                 self.obs = self.get_obs()
-            if np.abs(self.obs - data['data']) > self.epsilon:
+            if ("AF" in self.method) and (np.abs(self.obs - data['data']) > self.epsilon):
                 # request leader change
                 self.log("Agent {} requests leader change bc of bad data! proposed obs: {}, own obs: {}".format(self._index, data['data'], self.obs))
                 # If data is very different from own data, then ask for leader change ###
@@ -338,83 +344,13 @@ class Agent:
                 self.leader_change_slots[slot_no].add(leader_change_msg['index'])
 
                 if (len(self.leader_change_slots[slot_no]) >= 2 * self._f + 1):
+                    if "t" in slot_no:
+                        self.leader_change_slots[slot_no] = set()
                     self.leader = (self.leader + 1) % self.num_agents
                     self.log("Agent {} leader changed to {}!".format(self._index, self.leader))
-                    if slot_no == -1:
-                        self.leader_change_slots[slot_no] = set()
+                    
 
-
-#class FaultyAgent1(Agent):
-#    """
-#    Doesn't send prepare messages
-#    """
-#
-#    def __init__(self, index, n_agents):
-#        print("Initializing Faulty Agent 1")
-#        super().__init__(index, n_agents)
-#
-#    async def prepare(self, preprepare_msg):
-#        return web.Response()
-#
-#
-#class FaultyAgent2(Agent):
-#    """
-#    Doesn't send commit messages
-#    """
-#
-#    def __init__(self, index, n_agents):
-#        print("Initializing Faulty Agent 2")
-#        super().__init__(index, n_agents)
-#
-#    async def commit(self, prepare_msg):
-#        pass
 
 
 def make_url(node, endpoint=None):
     return "http://{}:{}/{}".format("localhost", node, endpoint)
-
-
-#def create_agent(args, is_byzantine=False):
-#    if not is_byzantine:
-#        return Agent(args.index, args.num_agents)
-#    else:
-#        F = int(np.floor((args.num_agents - 1) / 3))
-#        if args.index < args.num_agents - F:
-#            print("regular index", args.index)
-#            agent = Agent(args.index, args.num_agents)
-#        else:
-#            print("faulty index", args.index)
-#            agent = FaultyAgent2(args.index, args.num_agents)
-#        return agent
-
-
-#def main():
-#    parser = argparse.ArgumentParser(description='PBFT Node')
-#    parser.add_argument('-i', '--index', type=int, help='node index')
-#    parser.add_argument('-n', '--num_agents', type=int, help='node index')
-#    args = parser.parse_args()
-#
-#    print("STARTING", args)
-#    agent = create_agent(args, is_byzantine=False)
-#    port = 30000 + args.index
-#
-#    time.sleep(np.random.randint(2))
-#
-#    app = web.Application()
-#    app.add_routes([
-#        web.post('/send_obs_request', agent.send_obs_request),
-#        web.post('/get_obs_request', agent.get_obs_request),
-#        web.post('/preprepare', agent.preprepare),
-#        web.post('/prepare', agent.prepare),
-#        web.post('/commit', agent.commit),
-#        web.post('/reply', agent.reply),
-#        web.post('/reopen', agent.reopen),
-#        web.post('/setobs', agent.setobs),
-#        web.post('/leader_change', agent.leader_change),
-#    ])
-#
-#    web.run_app(app, host="localhost", port=port, access_log=None)
-
-
-#if __name__ == "__main__":
-#    main()
