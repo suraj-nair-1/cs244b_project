@@ -14,19 +14,19 @@ from faulty_agents import *
 
 def create_agent(args, is_byzantine=False):
     if not is_byzantine:
-        return Agent(args.index, args.num_agents, args.method)
+        return Agent(args.index, args.num_agents, args.method, args.env)
     else:
 
         if args.num_faulty >= (args.num_agents-1)//3:  # if args.num_faulty is invalid, just use maximum # faulty agents
-            args.num_faulty = max(((args.num_agents-1)//3) - 1, 0)
+            args.num_faulty = max(((args.num_agents-1)//3), 0)
         if args.index < args.num_faulty:
             print("faulty index", args.index)
             FaultyAgent = np.random.choice(faulty_agents_list, 1)[0]   # randomly picks a faulty agent
 #             FaultyAgent = faulty_agents_list[args.index]                # picks faulty agent in order
-            agent = FaultyAgent(args.index, args.num_agents, args.method)
+            agent = FaultyAgent(args.index, args.num_agents, args.method, args.env)
         else:
             print("regular index", args.index)
-            agent = Agent(args.index, args.num_agents, args.method)
+            agent = Agent(args.index, args.num_agents, args.method, args.env)
         return agent
 
 
@@ -36,6 +36,7 @@ def main():
     parser.add_argument('-n', '--num_agents', type=int, help='node index')
     parser.add_argument('-f', '--num_faulty', type=int, help='must be less than (num_agents-1)//3')
     parser.add_argument('-m', '--method', type=str, help='LF+AF, LF, AF, PBFT')
+    parser.add_argument('-e', '--env', type=str, help='')
     #parser.add_argument('-ft', '--faulty_type', type=str, help='type of faulty agent')
     parser.add_argument('--control', action='store_true')
     args = parser.parse_args()

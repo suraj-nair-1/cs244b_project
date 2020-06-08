@@ -9,13 +9,17 @@ import aiohttp
 from aiohttp import web
 import numpy as np
 
-
 class Agent:
 
-    def __init__(self, index, n_agents, method="LF+AF"):
+    def __init__(self, index, n_agents, method, env):
         self._index = index
         self.num_agents = n_agents
         self.method = method
+        self.envtype = env
+        if self.envtype == 'miniworld':
+            import gym
+            import gym_miniworld
+            self.env = gym.make("MiniWorld-Custom-v0")
         self._f = (self.num_agents - 1) // 3
         self.observations_recieved = None
         self._dont_send = False
@@ -31,7 +35,7 @@ class Agent:
         self._sent = False
         self.leader = 0  # leader index initialized to 0
         self.reply_slots = {}
-        self.epsilon = 10    # threshold for obs being different; requests leader change if above this threshold.
+        self.epsilon = 30    # threshold for obs being different; requests leader change if above this threshold.
         # Initialize session
         timeout = aiohttp.ClientTimeout(1)
         self._session = aiohttp.ClientSession(timeout=timeout)
@@ -60,7 +64,14 @@ class Agent:
         Client function
         :return:
         """
-        return self.true_state + np.random.randint(-5, 5)
+        if self.envtype == "temp":
+            return self.true_state + np.random.randint(-5, 5)
+        else:
+            o = self.env.reset()
+            import cv2
+            cv2.imwrite(f"ims/agent{self._index}_obs.png", o)
+            self.log(str(o.shape))
+            return ','.join(map(str, o.reshape(-1)[:].tolist())) #0 #o[:5, :5]
 
     ## Send An Obs Request to leader
     async def send_obs_request(self, send_request):
@@ -71,6 +82,7 @@ class Agent:
         # Get Observations
         if self.obs is None:
             self.obs = self.get_obs()
+        self.log("OBS READY")
 
 
         await asyncio.sleep(random())
@@ -79,15 +91,16 @@ class Agent:
         # Try and send observation
         self.sent_time = time.time()
         self.sent_data = {
-            'id': (self._index, self.obs),
+            'id': (self._index, ),
             'timestamp': self.sent_time,
-            'data': str(self.obs),
+            'data': self.obs,
             'leader': self.leader
         }
+        self.last_sent_time = None
         while 1:
             try:
                 #self.log("curr time - sent time {}".format(time.time()-self.sent_time))
-                if time.time()-self.sent_time > 2:
+                if time.time()-self.sent_time > (2*self.num_agents*100):
                     # request leader change
                     self.log("Agent {} requests leader change bc of timeout! Curr leader is {}".format(self._index, self.leader))
                     # If data is very different from own data, then ask for leader change ###
@@ -101,14 +114,20 @@ class Agent:
                     await self.post(np.arange(self.num_agents), 'leader_change', leader_change_msg)
                     self.sent_time = time.time()
                     self.sent_data = {
-                        'id': (self._index, self.obs),
+                        'id': (self._index, ),
                         'timestamp': self.sent_time,
-                        'data': str(self.obs),
+                        'data': self.obs,
                         'leader': self.leader
                     }
-
+#                 if (self.last_sent_time is None) or (time.time()-self.last_sent_time > 30):
+#                     self.log(f"SENDING {str(time.time())}")
+#                     self.last_sent_time = time.time()
                 await self._session.post(make_url(30000 + self.leader, "get_obs_request"), json= self.sent_data)
-                await asyncio.wait_for(self._got_response.wait(), 5)
+                self.log(f"Agent {self._index} sent obs {self.obs} to leader {self.leader}")
+                await asyncio.wait_for(self._got_response.wait(), 120)
+#                 else:
+#                     assert(False)
+                
             except:
                 if self._closed:
                     break
@@ -166,16 +185,28 @@ class Agent:
             if self.observations_recieved is None:
                 self.observations_recieved = {}
                 self.time_started = time.time()
-            self.observations_recieved[j['id'][0]] = j['data']
+            self.observations_recieved[j['id'][0]] = list(map(int, j['data'].split(',')))
             
-            if not self._sent: print(self.observations_recieved)
+            if not self._sent: 
+#                 print(self.observations_recieved)
+                self.log(f"Got {len(self.observations_recieved)} observations")
             if ("LF" not in self.method) and (self.value_to_send is None) and (len(self.observations_recieved.keys()) >= ((2 * self._f) + 1)):
-                vals = (list(self.observations_recieved.values()))
-                self.value_to_send = list(map(int, vals))[0]
+                if self.envtype == 'miniworld':
+                    vals =  np.array((list(self.observations_recieved.values())))
+                    self.value_to_send = ','.join(map(str, vals[0].tolist()))
+                else:
+                    vals = (list(self.observations_recieved.values()))
+                    self.value_to_send = list(map(int, vals))[0]
             elif (self.value_to_send is None) and (len(self.observations_recieved.keys()) >= ((2 * self._f) + 1)):   #### CHANGED THIS TO >=
-                vals = (list(self.observations_recieved.values()))
-                self.value_to_send = np.median(list(map(int, vals)))
-                #### TODO ^ REPLACE ABOVE WITH BETTER SCHEME BASED ON OBSERVATION DISTRIBUTION
+                if self.envtype == 'miniworld':
+                    vals = np.array(list(self.observations_recieved.values()))
+                    mean = vals.mean(0)
+                    dist_to_mean = (vals - mean).mean(-1)
+                    min_dist_id = np.argmin(dist_to_mean)
+                    self.value_to_send = ','.join(map(str, vals[min_dist_id].tolist()))
+                else:
+                    vals = (list(self.observations_recieved.values()))
+                    self.value_to_send = np.median(list(map(int, vals)))
 
             if self.value_to_send is not None and not self._sent:
                 self._sent = True
@@ -212,7 +243,19 @@ class Agent:
         }
 
         await self.post(np.arange(self.num_agents), "prepare", preprepare_msg)
-
+        
+    async def different(self, data):
+        if self.envtype == 'temp':
+            return np.abs(self.obs - data) > self.epsilon
+        else:
+            obs_ns = np.array(list(map(int, self.obs.split(','))))
+            data_ns = np.array(list(map(int, data.split(','))))
+            d = np.abs(obs_ns - data_ns).mean()
+            self.log(f"DISTANCE {d}")
+#             print(obs_ns, data_ns, d)
+            return d > self.epsilon
+            
+  
     async def prepare(self, preprepare_msg):
         """
         Takes pre-prepare message and if it looks good sends prepare messages to all agents
@@ -227,7 +270,7 @@ class Agent:
             self._next_propose_slot_no = max(self._next_propose_slot_no, int(slot_no))
             if self.obs is None:
                 self.obs = self.get_obs()
-            if ("AF" in self.method) and (np.abs(self.obs - data['data']) > self.epsilon):
+            if ("AF" in self.method) and (await self.different(data['data'])):
                 # request leader change
                 self.log("Agent {} requests leader change bc of bad data! proposed obs: {}, own obs: {}".format(self._index, data['data'], self.obs))
                 # If data is very different from own data, then ask for leader change ###
@@ -293,16 +336,12 @@ class Agent:
             if slot_no not in self.commit_slots.keys():
                 self.commit_slots[slot_no] = []
             self.commit_slots[slot_no].append(commit_msg['index'])
-
+            self.log(f"Slot no {slot_no} has {len(self.commit_slots[slot_no])} of {2 * self._f + 1} commits")
             if (len(self.commit_slots[slot_no]) >= 2 * self._f + 1) and (slot_no not in self.commit_sent.keys()):
-                self.log("Agent {} committed".format(self._index) + str(data))
+                self.log("Agent {} committed".format(self._index))
                 self.commit_sent[slot_no] = True
                 self.permanent_record[slot_no] = data
                 self.commited_vals.append(data["data"])
-#                 np.save(f"logs/results_{self._index}.npy",  np.array(self.commit_true_counts))
-
-                ### ADDING THIS LINE ###
-                #np.save(f"logs/nagents{self.num_agents}_{self._index}.npy",  np.array(self.commit_true_counts))
 
                 ## leader increment
                 try:

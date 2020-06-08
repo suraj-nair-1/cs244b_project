@@ -6,9 +6,9 @@ class F_Leader1(Agent):
     Doesn't send observation request
     """
 
-    def __init__(self, index, n_agents, method):
+    def __init__(self, index, n_agents, method, env):
         print("Initializing Faulty Leader 1")
-        super().__init__(index, n_agents, method)
+        super().__init__(index, n_agents, method, env)
 
     async def get_obs_request(self, get_obs_request):
         if self._index != self.leader:  # if self is not leader redirect to leader
@@ -25,9 +25,9 @@ class F_Leader2(Agent):
     TODO: DEFINE FAULTY OBSERVATION BASED ON GROUND TRUTH VALUE
     """
 
-    def __init__(self, index, n_agents, method):
+    def __init__(self, index, n_agents, method, env):
         print("Initializing Faulty Leader 2")
-        super().__init__(index, n_agents, method)
+        super().__init__(index, n_agents, method, env)
 
     async def get_obs_request(self, get_obs_request):
         """
@@ -41,7 +41,11 @@ class F_Leader2(Agent):
         else:
             ####################
             # testing faulty leader
-            self.obs = 1  # the case where only the leader's observation is faulty, but proposed obs is not;
+            if self.envtype == 'miniworld':
+                o = np.zeros((60, 80, 3)).astype(np.uint8)
+                self.obs = ','.join(map(str, o.reshape(-1)[:].tolist()))
+            else:
+                self.obs = 1  # the case where only the leader's observation is faulty, but proposed obs is not;
             # everyone should still successfully commit the proposed value
             self.value_to_send = self.obs  # the case where leader's observation and proposed observation is faulty.
             ##################
@@ -62,9 +66,9 @@ class F_Observation(Agent):
     Sends faulty observation
     """
 
-    def __init__(self, index, n_agents, method):
+    def __init__(self, index, n_agents, method, env):
         print("Initializing Faulty Observation")
-        super().__init__(index, n_agents, method)
+        super().__init__(index, n_agents, method, env)
 
         ## Get agent obs (Noisy version of true obs)
     def get_obs(self):
@@ -72,7 +76,11 @@ class F_Observation(Agent):
         Client function
         :return:
         """
-        return self.true_state + self.epsilon*5
+        if self.envtype == 'miniworld':
+            o = np.zeros((60, 80, 3)).astype(np.uint8)
+            return ','.join(map(str, o.reshape(-1)[:].tolist()))
+        else:
+            return self.true_state + self.epsilon*5
 
 
 class F_Prepare(Agent):
@@ -80,9 +88,9 @@ class F_Prepare(Agent):
     Doesn't send prepare messages
     """
 
-    def __init__(self, index, n_agents, method):
+    def __init__(self, index, n_agents, method, env):
         print("Initializing Faulty Prepare")
-        super().__init__(index, n_agents, method)
+        super().__init__(index, n_agents, method, env)
 
     async def prepare(self, preprepare_msg):
         self.log("Faulty agent {} on preprepare. Not doing anything!".format(self._index))
@@ -94,9 +102,9 @@ class F_Commit(Agent):
     Doesn't send commit messages
     """
 
-    def __init__(self, index, n_agents, method):
+    def __init__(self, index, n_agents, method, env):
         print("Initializing Faulty Commit")
-        super().__init__(index, n_agents, method)
+        super().__init__(index, n_agents, method, env)
 
     async def commit(self, prepare_msg):
         self.log("Faulty agent {} on commit. Not doing anything!".format(self._index))
@@ -107,9 +115,9 @@ class F_Reply(Agent):
     Doesn't save commit obs and doesn't change leader
     """
 
-    def __init__(self, index, n_agents, method):
+    def __init__(self, index, n_agents, method, env):
         print("Initializing Faulty Reply")
-        super().__init__(index, n_agents, method)
+        super().__init__(index, n_agents, method, env)
 
     async def reply(self, commit_msg):
         self.log("Faulty agent {} on reply. Not doing anything!".format(self._index))
@@ -120,9 +128,9 @@ class F_LeaderChange(Agent):
     Doesn't participate in leader change
     """
 
-    def __init__(self, index, n_agents, method):
+    def __init__(self, index, n_agents, method, env):
         print("Initializing Faulty Leader Change")
-        super().__init__(index, n_agents, method)
+        super().__init__(index, n_agents, method, env)
 
     async def leader_change(self, leader_change_msg):
         self.log("Faulty agent {} on leader change. Not doing anything!".format(self._index))
