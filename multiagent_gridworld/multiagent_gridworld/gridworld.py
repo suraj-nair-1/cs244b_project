@@ -4,70 +4,116 @@ from gym.spaces import  Dict , Box, Discrete
 import gym
 import math
 import os
+import ipdb
+from .diagonal_movement import DiagonalMovement
+from .astar import AStarFinder
+from .grid import Grid
 
 class Gridworld(gym.Env):
     def __init__(self):
         self.grid_size = 10
         self.grid = np.zeros((self.grid_size,self.grid_size)).astype(np.int32)
-        self.num_agents = 3
-        self.bad_agent_pos = np.zeros((2)).astype(np.int32)
+        self.grid_obs = [[1]*self.grid_size for _ in range(self.grid_size)]
+        self.num_agents = 4
+        self.num_obstacles = 10
         self.horizon = 50
         self.num_steps = 0
-        self.action_space = Discrete(5)
+        self.action_space = Discrete(4)
 
-    def apply_action(self, act):
-        if act == 0:
-            return np.array([0,0])
-        elif act == 1:
-            return np.array([0,-1])
-        elif act == 2:
-            return np.array([0,1])
-        elif act == 3:
-            return np.array([-1,0])
-        elif act == 4:
-            return np.array([1,0])
 
-    def step(self, action):
-        assert(action.shape == (self.num_agents,))
-        #### 0 = None, 1 = left, 2 = right, 3 = up, 4 = down
-        ## Good Agents Step
-        for i, act in enumerate(action):
-            current_agent = i + 1
-            next_pos = self.agents[current_agent] + self.apply_action(act)
-            next_pos = next_pos.clip(0, self.grid_size - 1)
-            if self.grid[next_pos[0], next_pos[1]] == 0:
-                self.agents[current_agent] = next_pos
+    def step(self):
+
+        # Agents Step
+        print("SAME GRID, BEFORE ACTION")
+        print(self.grid_obs)
+        print(self.grid)
+        for a in range(1, self.num_agents+1):
+            grid = Grid(matrix=self.grid_obs)
+            start = grid.node(self.agents[a][0], self.agents[a][1])
+            end = grid.node(self.goal[0], self.goal[1])
+            finder = AStarFinder(diagonal_movement=DiagonalMovement.always)
+            path, runs = finder.find_path(start, end, grid)
+            if len(path) > 1:
+                next_pos = path[1]
+            elif len(path) == 1:
+                next_pos = path[0]
+            elif len(path) == 0 :
+                print("STAYING PUT")
+                next_pos = self.agents[a]  # stay put
+            if self.grid[next_pos[0], next_pos[1]] == -1:
+                print("STAYING PUT")
+                next_pos = self.agents[a]  # stay put
+
+            print(self.agents[a], next_pos, a)
+
+            assert self.grid[next_pos[0], next_pos[1]] != -1
+            assert self.grid_obs[next_pos[0]][next_pos[1]] != 0
+            self.agents[a] = next_pos
+            self.update_grid()
+        print("SAME GRID, AFTER ACTION")
+        print(self.grid)
+
+        # If all agents have reached goal, DONE
+        done = False
+        n_done = 0
+        for a in range(1, self.num_agents+1):
+            if list(self.agents[a]) == self.goal:
+                n_done += 1
+
+        if n_done == self.num_agents:
+            done = True
+
+        # Place obstacles
+        print("UPDATING GRIDS")
+        self.obstacles = []
+        for o in range(self.num_obstacles):
+            pos = self.place()
+            self.obstacles.append(pos)
             self.update_grid()
 
-        ## Bad Agent Step
-#         next_pos = self.bad_agent_pos + self.apply_action(np.random.randint(5))
-#         next_pos = next_pos.clip(0, self.grid_size - 1)
-#         if self.grid[next_pos[0], next_pos[1]] == 0:
-#             self.bad_agent_pos = next_pos
-            
-        dists = []
-        for k in self.agents.keys():
-            dists.append(np.linalg.norm(self.agents[k]))
-        rew = - np.mean(dists)
         self.update_grid()
+        print(self.grid)
+        print("-"*50)
         self.num_steps += 1
-        done = (self.num_steps == self.horizon)
-        return self.grid, rew, done, {}
+
+        return self.grid, done, {}
 
     def update_grid(self):
         self.grid = np.zeros((self.grid_size,self.grid_size)).astype(np.int32)
-        self.grid[self.bad_agent_pos[0], self.bad_agent_pos[1]] = -1
+        self.grid_obs = [[1]*self.grid_size for _ in range(self.grid_size)]
+
+        self.grid[self.goal[0], self.goal[1]] = 100
+        for obs in self.obstacles:
+            self.grid[obs[0], obs[1]] = -1
+            self.grid_obs[obs[0]][obs[1]] = 0
         for a in self.agents.keys():
             self.grid[self.agents[a][0], self.agents[a][1]] = a
 
-    def reset(self):
-        self.bad_agent_pos = np.zeros((2)).astype(np.int32)
-        self.agents = {}
-        for a in range(1, self.num_agents+1):
+
+    def place(self):
+        pos = np.random.randint(1, self.grid_size, (2)).astype(np.int32)
+        while self.grid[pos[0], pos[1]] != 0:
             pos = np.random.randint(1, self.grid_size, (2)).astype(np.int32)
-            while self.grid[pos[0], pos[1]] != 0:
-                pos = np.random.randint(1, self.grid_size, (2)).astype(np.int32)
+        return pos
+
+    def reset(self):
+        self.agents = {}
+        self.obstacles = []
+
+        # Place goal
+        self.goal = [self.grid_size-1, self.grid_size-1]
+        self.update_grid()
+
+        # Place agents
+        for a in range(1, self.num_agents+1):
+            pos = self.place()
             self.agents[a] = pos
+            self.update_grid()
+
+        # Place obstacles
+        for o in range(self.num_obstacles):
+            pos = self.place()
+            self.obstacles.append(pos)
             self.update_grid()
 
         self.update_grid()
