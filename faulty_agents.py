@@ -112,7 +112,43 @@ class F_Reply(Agent):
         super().__init__(index, n_agents)
 
     async def reply(self, commit_msg):
-        self.log("Faulty agent {} on reply. Not doing anything!".format(self._index))
+        self.log("Faulty agent {} on reply. Not incrementing leader!".format(self._index))
+        if self._closed:
+            return web.Response()
+        commit_msg = await commit_msg.json()
+        assert (commit_msg['type'] == 'commit')
+        self.log(f"Got Commit From {commit_msg['index']}, current leader is {self.leader}")
+        for slot_no, data in commit_msg['proposal'].items():
+            if slot_no not in self.commit_slots.keys():
+                self.commit_slots[slot_no] = []
+            self.commit_slots[slot_no].append(commit_msg['index'])
+
+            if (len(self.commit_slots[slot_no]) >= 2 * self._f + 1) and (slot_no not in self.commit_sent.keys()):
+                self.log("Agent {} committed".format(self._index) + str(data))
+                self.commit_sent[slot_no] = True
+                self.permanent_record[slot_no] = data
+                self.commited_vals.append(data["data"])
+                #                 np.save(f"logs/results_{self._index}.npy",  np.array(self.commit_true_counts))
+
+                ## leader increment
+                try:
+                    num_sent_commits = 0
+                    for slot_no, data in commit_msg['proposal'].items():  # count committed slots
+                        if self.commit_sent[slot_no]:
+                            num_sent_commits += 1
+                    if num_sent_commits == len(
+                            commit_msg['proposal'].keys()):  # if every slot has been committed, change leader
+                        self.log("Due To Commit, Agent {} leader changed to {}!".format(self._index, self.leader))
+                        if not self._closed:
+                            self._closed = True
+                            await self._session.close()
+                            self.log(f"CLOSED {self._index}")
+                        try:
+                            self._got_response.set()
+                        except:
+                            pass
+                except:
+                    pass
 
 
 class F_LeaderChange(Agent):
@@ -129,7 +165,7 @@ class F_LeaderChange(Agent):
 
 
 #faulty_agents_list = np.array([F_Leader1, F_Leader2, F_Prepare, F_Commit, F_LeaderChange])
-faulty_agents_list = np.array([F_Leader2,  F_LeaderChange])
+faulty_agents_list = np.array([F_Reply,  F_Reply])
 #faulty_agents_list = np.array([F_Prepare,  F_Commit])
 
 
