@@ -21,8 +21,8 @@ def create_agent(args, is_byzantine=False):
             args.num_faulty = max(((args.num_agents-1)//3) - 1, 0)
         if args.index < args.num_faulty:
             print("faulty index", args.index)
-            FaultyAgent = np.random.choice(faulty_agents_list, 1)[0]   # randomly picks a faulty agent
-            #FaultyAgent = faulty_agents_list[args.index]                # picks faulty agent in order
+            #FaultyAgent = np.random.choice(faulty_agents_list, 1)[0]   # randomly picks a faulty agent
+            FaultyAgent = faulty_agents_list[args.index]                # picks faulty agent in order
             agent = FaultyAgent(args.index, args.num_agents, args.method)
         else:
             print("regular index", args.index)
