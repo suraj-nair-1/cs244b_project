@@ -11,7 +11,7 @@ from .grid import Grid
 
 class Gridworld(gym.Env):
     def __init__(self):
-        self.grid_size = 10
+        self.grid_size = 8
         self.grid = np.zeros((self.grid_size,self.grid_size)).astype(np.int32)
         self.true_grid_obs = [[1]*self.grid_size for _ in range(self.grid_size)]
         self.num_agents = 4

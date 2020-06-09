@@ -50,9 +50,9 @@ def run_experiment(env, num_agents, num_faulty, num_obs, sample_no, method):
     print("DELETED OLD FILES")
 
     for i in range(num_agents):
-        subprocess.run(f"fuser -k {30000+i}/tcp", shell=True)
+        #subprocess.run(f"fuser -k {30000+i}/tcp", shell=True)
         #subprocess.run(f"sudo lsof -i tcp:30000+i ", shell=True)
-#         subprocess.run(f"lsof -nti:{30000+i} | xargs kill -9", shell=True)
+        subprocess.run(f"lsof -nti:{30000+i} | xargs kill -9", shell=True)
 
     print("KILLED OLD PROC")
     p = []
@@ -75,7 +75,7 @@ def run_experiment(env, num_agents, num_faulty, num_obs, sample_no, method):
         step += 1
         print("STEP:", step)
         #print("obs: ",obstacles)
-        true_obs.append(obstacles)
+        #true_obs.append(obstacles)
 
         loop = asyncio.get_event_loop()
         futures = [send_msg(sess, make_url(30000 + i, "setobs"), {"obs": obstacles_str}) for i in range(num_agents)]
@@ -97,7 +97,7 @@ def run_experiment(env, num_agents, num_faulty, num_obs, sample_no, method):
         results = np.array(rs[0]).astype(np.int32)
         #print(results)
         #print(results.shape)  #  num_obstacles, 2
-        noisy_obs.append(results)
+        #noisy_obs.append(results)
 
         _, obstacles, done, _ = env.step(results)
         obstacles_str = json.dumps(obstacles)
@@ -106,12 +106,13 @@ def run_experiment(env, num_agents, num_faulty, num_obs, sample_no, method):
             break
 
 
-    true_obs = np.array(true_obs)
-    noisy_obs = np.array(noisy_obs)
+    #true_obs = np.array(true_obs)
+    #noisy_obs = np.array(noisy_obs)
     #print(true_obs.shape, noisy_obs.shape)  # num_steps, num_obstacles, num_agents
-    results = np.stack([noisy_obs, true_obs])
+    #results = np.stack([noisy_obs, true_obs])
     #print(results.shape)
-    results_dict = {'steps': step, 'error':results}
+    #results_dict = {'steps': step, 'error':results}
+    results_dict = {'steps': step}
     output_dir = open(f"logs/control_results/results_nagents_{num_agents}_nfaulty_{num_faulty}_nobs_{num_obs}_method_{method}_sample_{sample_no}.pkl", 'wb')
     pickle.dump(results_dict, output_dir)
     output_dir.close()
@@ -132,6 +133,7 @@ def run_experiment(env, num_agents, num_faulty, num_obs, sample_no, method):
         pr.terminate()
     print("KILLED NEW PROC")
     print("TOTAL STEPS: ", step)
+    return step
         
 
 def main():
@@ -146,14 +148,20 @@ def main():
 
     num_agents = 12
     #for num_obs in [1, 10, 20, 30, 40, 50]:
-    num_obs = 30
-    for num_faulty in range(0,4):
+    num_obs = 10
+    for num_faulty in range(4):
+        steps = []
         for sample in range(10):
             env = gym.make("MultiGrid-v0")
             env.num_agents = num_agents
             env.num_obstacles = num_obs
-            run_experiment(env, num_agents, num_faulty, num_obs, sample, args.method)
+            step = run_experiment(env, num_agents, num_faulty, num_obs, sample, args.method)
+            steps.append(step)
             print(f"FINISHED NUMF {num_faulty} SAMPLE {sample}")
+        results_dict = {'steps': steps}
+        output_dir = open(f"logs/control_results/results_nagents_{num_agents}_nfaulty_{num_faulty}_nobs_{num_obs}_method_{method}.pkl", 'wb')
+        pickle.dump(results_dict, output_dir)
+        output_dir.close()
 
 
 

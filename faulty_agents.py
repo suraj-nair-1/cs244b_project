@@ -25,7 +25,7 @@ class F_Leader2(Agent):
     TODO: DEFINE FAULTY OBSERVATION BASED ON GROUND TRUTH VALUE
     """
 
-    def __init__(self, index, n_agents, method):
+    def __init__(self, index, n_agents, n_obs, method):
         print("Initializing Faulty Leader 2")
         super().__init__(index, n_agents, method)
 
@@ -62,7 +62,7 @@ class F_Observation(Agent):
     Sends faulty observation
     """
 
-    def __init__(self, index, n_agents, method):
+    def __init__(self, index, n_agents, n_obs, method):
         print("Initializing Faulty Observation")
         super().__init__(index, n_agents, method)
 
