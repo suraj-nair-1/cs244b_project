@@ -13,7 +13,7 @@ class Gridworld(gym.Env):
     def __init__(self):
         self.grid_size = 10
         self.grid = np.zeros((self.grid_size,self.grid_size)).astype(np.int32)
-        self.grid_obs = [[1]*self.grid_size for _ in range(self.grid_size)]
+        self.true_grid_obs = [[1]*self.grid_size for _ in range(self.grid_size)]
         self.num_agents = 4
         self.num_obstacles = 10
         self.horizon = 50
@@ -21,12 +21,24 @@ class Gridworld(gym.Env):
         self.action_space = Discrete(4)
 
 
-    def step(self):
+    def step(self, consensus_obstacle_list=None):
+        if consensus_obstacle_list is not None:
+            # build an grid based on this list
+            self.grid_obs = [[1]*self.grid_size for _ in range(self.grid_size)]
+            for obs in consensus_obstacle_list:
+                if obs[0] > self.grid_size-1 : obs[0] = self.grid_size-1
+                if obs[0] < 0  : obs[0] = 0
+                if obs[1] > self.grid_size-1 : obs[1] = self.grid_size-1
+                if obs[1] < 0  : obs[1] = 0
+                self.grid_obs[obs[0]][obs[1]] = 0
+        else:
+            self.grid_obs = self.true_grid_obs
 
         # Agents Step
         print("SAME GRID, BEFORE ACTION")
-        print(self.grid_obs)
         print(self.grid)
+        #print("true: ", self.true_grid_obs)
+        #print("\nnoisy: ", self.grid_obs)
         for a in range(1, self.num_agents+1):
             grid = Grid(matrix=self.grid_obs)
             start = grid.node(self.agents[a][0], self.agents[a][1])
@@ -40,14 +52,14 @@ class Gridworld(gym.Env):
             elif len(path) == 0 :
                 print("STAYING PUT")
                 next_pos = self.agents[a]  # stay put
-            if self.grid[next_pos[0], next_pos[1]] == -1:
+            if self.grid[next_pos[0], next_pos[1]] == -1:  ### NOTE THAT WE ARE USING self.grid NOT self.grid_obs
                 print("STAYING PUT")
                 next_pos = self.agents[a]  # stay put
 
             print(self.agents[a], next_pos, a)
 
             assert self.grid[next_pos[0], next_pos[1]] != -1
-            assert self.grid_obs[next_pos[0]][next_pos[1]] != 0
+            assert self.true_grid_obs[next_pos[0]][next_pos[1]] != 0
             self.agents[a] = next_pos
             self.update_grid()
         print("SAME GRID, AFTER ACTION")
@@ -68,7 +80,8 @@ class Gridworld(gym.Env):
         self.obstacles = []
         for o in range(self.num_obstacles):
             pos = self.place()
-            self.obstacles.append(pos)
+            pos = [int(x) for x in pos]
+            self.obstacles.append(list(pos))
             self.update_grid()
 
         self.update_grid()
@@ -76,16 +89,16 @@ class Gridworld(gym.Env):
         print("-"*50)
         self.num_steps += 1
 
-        return self.grid, done, {}
+        return self.true_grid_obs, self.obstacles, done, {}
 
     def update_grid(self):
         self.grid = np.zeros((self.grid_size,self.grid_size)).astype(np.int32)
-        self.grid_obs = [[1]*self.grid_size for _ in range(self.grid_size)]
+        self.true_grid_obs = [[1]*self.grid_size for _ in range(self.grid_size)]
 
         self.grid[self.goal[0], self.goal[1]] = 100
         for obs in self.obstacles:
             self.grid[obs[0], obs[1]] = -1
-            self.grid_obs[obs[0]][obs[1]] = 0
+            self.true_grid_obs[obs[0]][obs[1]] = 0
         for a in self.agents.keys():
             self.grid[self.agents[a][0], self.agents[a][1]] = a
 
@@ -113,12 +126,13 @@ class Gridworld(gym.Env):
         # Place obstacles
         for o in range(self.num_obstacles):
             pos = self.place()
-            self.obstacles.append(pos)
+            pos = [int(x) for x in pos]
+            self.obstacles.append(list(pos))
             self.update_grid()
 
         self.update_grid()
         self.num_steps = 0
-        return self.grid
+        return self.true_grid_obs, self.obstacles
 
 
 
