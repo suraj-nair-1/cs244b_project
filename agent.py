@@ -303,7 +303,8 @@ class Agent:
                 self.log("Agent {} committed".format(self._index) + str(data))
                 self.commit_sent[slot_no] = True
                 self.permanent_record[slot_no] = data
-                self.commited_vals.append(data["data"])
+                #self.commited_vals.append(data["data"])
+                self.commited_vals = data["data"]
 #                 np.save(f"logs/results_{self._index}.npy",  np.array(self.commit_true_counts))
 
                 ### ADDING THIS LINE ###
