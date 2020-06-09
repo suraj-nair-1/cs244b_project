@@ -165,10 +165,10 @@ class F_LeaderChange(Agent):
 
 
 # robustness
-faulty_agents_list = np.array([F_Leader1, F_Prepare, F_Commit, F_LeaderChange, F_Reply])
+#faulty_agents_list = np.array([F_Leader1, F_Prepare, F_Commit, F_LeaderChange, F_Reply])
 #faulty_agents_list = np.array([F_Prepare, F_LeaderChange, F_Commit])
 
 # for testing our method
-#faulty_agents_list = np.array([F_Leader2,  F_Observation])
+faulty_agents_list = np.array([F_Leader2,  F_Observation])
 
 

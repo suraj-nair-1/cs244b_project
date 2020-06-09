@@ -34,13 +34,15 @@ async def get_response(session, url, data):
         js = await result.json()
         return(js['res'])
     except:
-        print("DONE!")
+        pass
+        #print("DONE!")
   
 async def send_msg(session, url, data):
     try:
         result = await session.post(url, json=data)
     except:
-        print("DONE!")
+        pass
+        #print("DONE!")
 
 def run_experiment(env, num_agents, num_faulty, num_obs, sample_no, method):
 
@@ -48,8 +50,8 @@ def run_experiment(env, num_agents, num_faulty, num_obs, sample_no, method):
     print("DELETED OLD FILES")
 
     for i in range(num_agents):
-        #subprocess.run(f"fuser -k {30000+i}/tcp", shell=True)
-        subprocess.run(f"sudo lsof -i tcp:30000+i ", shell=True)
+        subprocess.run(f"fuser -k {30000+i}/tcp", shell=True)
+        #subprocess.run(f"sudo lsof -i tcp:30000+i ", shell=True)
 #         subprocess.run(f"lsof -nti:{30000+i} | xargs kill -9", shell=True)
 
     print("KILLED OLD PROC")
@@ -142,15 +144,16 @@ def main():
     #parser.add_argument('-env', '--env', type=str, help='domain')
     args = parser.parse_args()
 
-    num_agents = 4
-    num_faulty = 1
-    for num_obs in [1, 10, 20, 30, 40, 50]:
+    num_agents = 12
+    #for num_obs in [1, 10, 20, 30, 40, 50]:
+    num_obs = 30
+    for num_faulty in range(0,4):
         for sample in range(10):
             env = gym.make("MultiGrid-v0")
             env.num_agents = num_agents
             env.num_obstacles = num_obs
             run_experiment(env, num_agents, num_faulty, num_obs, sample, args.method)
-        print(f"FINISHED NUMOBS {num_obs} SAMPLE {sample}")
+            print(f"FINISHED NUMF {num_faulty} SAMPLE {sample}")
 
 
 
