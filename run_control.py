@@ -88,17 +88,14 @@ def run_experiment(env, num_agents, num_faulty, num_obs, num_eps, method):
         loop = asyncio.get_event_loop()
         futures = [get_response(sess, make_url(30000 + i, "get_results"), {}) for i in range(num_agents)]
         rs = loop.run_until_complete(asyncio.gather(*futures))
-        print("RS: ", rs)
+        #print("RS: ", rs)
         rs = [ast.literal_eval(x) for x in rs]
         results = np.array(rs[0]).astype(np.int32)
         print(results)
-        print(results.shape)  #  num_obstacles, 2
+        #print(results.shape)  #  num_obstacles, 2
 
         _, obstacles, done, _ = env.step(results)
         obstacles_str = json.dumps(obstacles)
-        print("new obs: ", obstacles)
-        if step == 2:
-            break
 
         # ideally, will get estimated self.grid_obs,
         # call step with the new grid_obs

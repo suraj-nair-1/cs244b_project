@@ -175,7 +175,7 @@ class Agent:
             #if not self._sent: print(self.observations_recieved)
             if ("LF" not in self.method) and (self.value_to_send is None) and (len(self.observations_recieved.keys()) >= ((2 * self._f) + 1)):
                 vals = (list(self.observations_recieved.values()))
-                self.value_to_send = np.array([ast.literal_eval(val) for val in vals])
+                self.value_to_send = np.array([ast.literal_eval(val) for val in vals])[0]
             elif (self.value_to_send is None) and (len(self.observations_recieved.keys()) >= ((2 * self._f) + 1)):   #### CHANGED THIS TO >=
                 vals = (list(self.observations_recieved.values()))  # list of strings
                 self.value_to_send = np.array([ast.literal_eval(val) for val in vals])
