@@ -74,7 +74,7 @@ def run_experiment(env, num_agents, num_faulty, num_obs, sample_no, method):
     while not done:
         step += 1
         print("STEP:", step)
-        #print("obs: ",obstacles)
+        print("obs: ",obstacles)
         #true_obs.append(obstacles)
 
         loop = asyncio.get_event_loop()
