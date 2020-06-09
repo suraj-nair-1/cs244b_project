@@ -50,9 +50,9 @@ def run_experiment(env, num_agents, num_faulty, num_obs, sample_no, method):
     print("DELETED OLD FILES")
 
     for i in range(num_agents):
-        #subprocess.run(f"fuser -k {30000+i}/tcp", shell=True)
+        subprocess.run(f"fuser -k {30000+i}/tcp", shell=True)
         #subprocess.run(f"sudo lsof -i tcp:30000+i ", shell=True)
-        subprocess.run(f"lsof -nti:{30000+i} | xargs kill -9", shell=True)
+        #subprocess.run(f"lsof -nti:{30000+i} | xargs kill -9", shell=True)
 
     print("KILLED OLD PROC")
     p = []
@@ -149,7 +149,7 @@ def main():
     num_agents = 12
     #for num_obs in [1, 10, 20, 30, 40, 50]:
     num_obs = 10
-    for num_faulty in range(4):
+    for num_faulty in range(1,4):
         steps = []
         for sample in range(10):
             env = gym.make("MultiGrid-v0")
@@ -159,7 +159,8 @@ def main():
             steps.append(step)
             print(f"FINISHED NUMF {num_faulty} SAMPLE {sample}")
         results_dict = {'steps': steps}
-        output_dir = open(f"logs/control_results/results_nagents_{num_agents}_nfaulty_{num_faulty}_nobs_{num_obs}_method_{method}.pkl", 'wb')
+        output_dir = \ 
+        open(f"logs/control_results/results_nagents_{num_agents}_nfaulty_{num_faulty}_nobs_{num_obs}_method_{args.method}.pkl", 'wb')
         pickle.dump(results_dict, output_dir)
         output_dir.close()
 
