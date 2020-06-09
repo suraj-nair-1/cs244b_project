@@ -35,10 +35,8 @@ class Gridworld(gym.Env):
             self.grid_obs = self.true_grid_obs
 
         # Agents Step
-        print("SAME GRID, BEFORE ACTION")
-        print(self.grid)
-        #print("true: ", self.true_grid_obs)
-        #print("\nnoisy: ", self.grid_obs)
+        #print("SAME GRID, BEFORE ACTION")
+        #print(self.grid)
         for a in range(1, self.num_agents+1):
             grid = Grid(matrix=self.grid_obs)
             start = grid.node(self.agents[a][0], self.agents[a][1])
@@ -50,20 +48,20 @@ class Gridworld(gym.Env):
             elif len(path) == 1:
                 next_pos = path[0]
             elif len(path) == 0 :
-                print("STAYING PUT")
+                #print("STAYING PUT")
                 next_pos = self.agents[a]  # stay put
             if self.grid[next_pos[0], next_pos[1]] == -1:  ### NOTE THAT WE ARE USING self.grid NOT self.grid_obs
-                print("STAYING PUT")
+                #print("STAYING PUT")
                 next_pos = self.agents[a]  # stay put
 
-            print(self.agents[a], next_pos, a)
+            #print(self.agents[a], next_pos, a)
 
             assert self.grid[next_pos[0], next_pos[1]] != -1
             assert self.true_grid_obs[next_pos[0]][next_pos[1]] != 0
             self.agents[a] = next_pos
             self.update_grid()
-        print("SAME GRID, AFTER ACTION")
-        print(self.grid)
+        #print("SAME GRID, AFTER ACTION")
+        #print(self.grid)
 
         # If all agents have reached goal, DONE
         done = False
@@ -76,7 +74,7 @@ class Gridworld(gym.Env):
             done = True
 
         # Place obstacles
-        print("UPDATING GRIDS")
+        #print("UPDATING GRIDS")
         self.obstacles = []
         for o in range(self.num_obstacles):
             pos = self.place()
@@ -85,8 +83,8 @@ class Gridworld(gym.Env):
             self.update_grid()
 
         self.update_grid()
-        print(self.grid)
-        print("-"*50)
+        #print(self.grid)
+        #print("-"*50)
         self.num_steps += 1
 
         return self.true_grid_obs, self.obstacles, done, {}
