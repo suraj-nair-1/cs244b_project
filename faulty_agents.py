@@ -54,7 +54,7 @@ class F_Leader2(Agent):
                 #self.log("VALUE TO SEND:", self.value_to_send, self._index)
                 request = {
                     'leader': self._index,
-                    'data': self.value_to_send}
+                    'data': json.dumps(self.value_to_send.tolist())}
                 await self.preprepare(request)
                 return web.Response()
 
@@ -173,6 +173,6 @@ class F_LeaderChange(Agent):
 #faulty_agents_list = np.array([F_Prepare, F_LeaderChange, F_Commit])
 
 # for testing our method
-faulty_agents_list = np.array([F_Leader2,  F_Observation])
+faulty_agents_list = np.array([F_Leader2])
 
 
