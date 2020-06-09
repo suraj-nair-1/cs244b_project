@@ -112,10 +112,10 @@ def run_experiment(env, num_agents, num_faulty, num_obs, sample_no, method):
     #results = np.stack([noisy_obs, true_obs])
     #print(results.shape)
     #results_dict = {'steps': step, 'error':results}
-    results_dict = {'steps': step}
-    output_dir = open(f"logs/control_results/results_nagents_{num_agents}_nfaulty_{num_faulty}_nobs_{num_obs}_method_{method}_sample_{sample_no}.pkl", 'wb')
-    pickle.dump(results_dict, output_dir)
-    output_dir.close()
+    #results_dict = {'steps': step}
+    #output_dir = open(f"logs/control_results/results_nagents_{num_agents}_nfaulty_{num_faulty}_nobs_{num_obs}_method_{method}_sample_{sample_no}.pkl", 'wb')
+    #pickle.dump(results_dict, output_dir)
+    #output_dir.close()
     #loop = asyncio.get_event_loop()
     #futures = [get_response(sess, make_url(30000 + i, "get_results"), {}) for i in range(num_agents)]
     #rs = loop.run_until_complete(asyncio.gather(*futures))
@@ -149,7 +149,7 @@ def main():
     num_agents = 12
     #for num_obs in [1, 10, 20, 30, 40, 50]:
     num_obs = 10
-    for num_faulty in range(1,4):
+    for num_faulty in range(4):
         steps = []
         for sample in range(10):
             env = gym.make("MultiGrid-v0")

@@ -173,6 +173,7 @@ class F_LeaderChange(Agent):
 #faulty_agents_list = np.array([F_Prepare, F_LeaderChange, F_Commit])
 
 # for testing our method
-faulty_agents_list = np.array([F_Leader2])
+faulty_agents_list = np.array([F_Leader2, F_Observation])
+#faulty_agents_list = np.array([F_Leader2])
 
 
