@@ -6,8 +6,8 @@
 
 * `agent.py` contains the main class used to implement the LF+AF, LF, AF, and PBFT consensus protocols. We assume that every agent acts as both the client and server. 
 * `faulty_agents.py` contains wrapper classes that introduce standard faulty Byzantine agents as well as malicious agents with faulty observations. 
-* Each experiment file below act as a master process that launches all agents in parallel. 
-* `run_agent.py` is called by the experiment files and starts the consensus protocol by initializing a regular or faulty agent. 
+* Each experiment file below launches a master process that initializes all agents in parallel. 
+* `run_agent.py` is called by the experiment files to initialize regular or faulty agents. 
 
 ## Experiments 
 
