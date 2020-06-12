@@ -1,6 +1,5 @@
 import numpy as np
 import multiagent_gridworld
-import gym_minigrid
 import gym
 
 

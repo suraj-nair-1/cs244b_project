@@ -25,9 +25,9 @@ class F_Leader2(Agent):
     TODO: DEFINE FAULTY OBSERVATION BASED ON GROUND TRUTH VALUE
     """
 
-    def __init__(self, index, n_agents, method):
+    def __init__(self, index, n_agents, n_obs, method):
         print("Initializing Faulty Leader 2")
-        super().__init__(index, n_agents, method)
+        super().__init__(index, n_agents, n_obs, method)
 
     async def get_obs_request(self, get_obs_request):
         """
@@ -41,7 +41,9 @@ class F_Leader2(Agent):
         else:
             ####################
             # testing faulty leader
-            self.obs = 1  # the case where only the leader's observation is faulty, but proposed obs is not;
+            noisy_obs = self.true_state + np.random.rand(self.true_state.size).reshape(self.true_state.shape)
+            noisy_obs = np.rint(noisy_obs).astype(np.int32) * self.epsilon * 5
+            self.obs = noisy_obs  # the case where only the leader's observation is faulty, but proposed obs is not;
             # everyone should still successfully commit the proposed value
             self.value_to_send = self.obs  # the case where leader's observation and proposed observation is faulty.
             ##################
@@ -52,7 +54,7 @@ class F_Leader2(Agent):
                 #self.log("VALUE TO SEND:", self.value_to_send, self._index)
                 request = {
                     'leader': self._index,
-                    'data': self.value_to_send}
+                    'data': json.dumps(self.value_to_send.tolist())}
                 await self.preprepare(request)
                 return web.Response()
 
@@ -62,9 +64,9 @@ class F_Observation(Agent):
     Sends faulty observation
     """
 
-    def __init__(self, index, n_agents, method):
+    def __init__(self, index, n_agents, n_obs, method):
         print("Initializing Faulty Observation")
-        super().__init__(index, n_agents, method)
+        super().__init__(index, n_agents, n_obs, method)
 
         ## Get agent obs (Noisy version of true obs)
     def get_obs(self):
@@ -72,7 +74,9 @@ class F_Observation(Agent):
         Client function
         :return:
         """
-        return self.true_state + self.epsilon*5
+        noisy_obs = self.true_state + np.random.rand(self.true_state.size).reshape(self.true_state.shape)
+        noisy_obs = np.rint(noisy_obs).astype(np.int32) * self.epsilon * 5
+        return noisy_obs
 
 
 class F_Prepare(Agent):
@@ -165,10 +169,11 @@ class F_LeaderChange(Agent):
 
 
 # robustness
-faulty_agents_list = np.array([F_Leader1, F_Prepare, F_Commit, F_LeaderChange, F_Reply])
+#faulty_agents_list = np.array([F_Leader1, F_Prepare, F_Commit, F_LeaderChange, F_Reply])
 #faulty_agents_list = np.array([F_Prepare, F_LeaderChange, F_Commit])
 
 # for testing our method
-#faulty_agents_list = np.array([F_Leader2,  F_Observation])
+faulty_agents_list = np.array([F_Leader2, F_Observation])
+#faulty_agents_list = np.array([F_Leader2])
 
 

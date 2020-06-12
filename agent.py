@@ -8,11 +8,12 @@ import asyncio
 import aiohttp
 from aiohttp import web
 import numpy as np
+import ast
 
 
 class Agent:
 
-    def __init__(self, index, n_agents, method="LF+AF"):
+    def __init__(self, index, n_agents, n_obs, method="LF+AF"):
         self._index = index
         self.num_agents = n_agents
         self.method = method
@@ -31,7 +32,7 @@ class Agent:
         self._sent = False
         self.leader = 0  # leader index initialized to 0
         self.reply_slots = {}
-        self.epsilon = 10    # threshold for obs being different; requests leader change if above this threshold.
+        self.epsilon = n_obs*3    # threshold for obs being different; requests leader change if above this threshold.
         # Initialize session
         timeout = aiohttp.ClientTimeout(1)
         self._session = aiohttp.ClientSession(timeout=timeout)
@@ -46,21 +47,25 @@ class Agent:
     
     ## Get all commits
     async def get_results(self, get_request):
-        return web.json_response({"res" : list(self.commited_vals)})
+        return web.json_response({"res" : self.commited_vals})
     
     ## Set the agent obs to the true obs
     async def setobs(self, set_request):
         j = await set_request.json()
         self.true_state = j['obs']
         self.log(f"SET OBS TO {self.true_state}")
-        
+        self.true_state = np.array(ast.literal_eval(j['obs']))
+
     ## Get agent obs (Noisy version of true obs)
     def get_obs(self):
         """
         Client function
         :return:
         """
-        return self.true_state + np.random.randint(-5, 5)
+        #return self.true_state + np.random.randint(-5, 5)
+        noisy_obs =  self.true_state + np.random.rand(self.true_state.size).reshape(self.true_state.shape)
+        noisy_obs = np.rint(noisy_obs).astype(np.int32)
+        return noisy_obs
 
     ## Send An Obs Request to leader
     async def send_obs_request(self, send_request):
@@ -72,16 +77,15 @@ class Agent:
         if self.obs is None:
             self.obs = self.get_obs()
 
-
         await asyncio.sleep(random())
         self._got_response = asyncio.Event()
 
         # Try and send observation
         self.sent_time = time.time()
         self.sent_data = {
-            'id': (self._index, self.obs),
+            'id': (self._index, str(self.obs)),
             'timestamp': self.sent_time,
-            'data': str(self.obs),
+            'data': json.dumps(self.obs.tolist()),
             'leader': self.leader
         }
         while 1:
@@ -168,21 +172,21 @@ class Agent:
                 self.time_started = time.time()
             self.observations_recieved[j['id'][0]] = j['data']
             
-            if not self._sent: print(self.observations_recieved)
+            #if not self._sent: print(self.observations_recieved)
             if ("LF" not in self.method) and (self.value_to_send is None) and (len(self.observations_recieved.keys()) >= ((2 * self._f) + 1)):
                 vals = (list(self.observations_recieved.values()))
-                self.value_to_send = list(map(int, vals))[0]
+                self.value_to_send = np.array([ast.literal_eval(val) for val in vals])[0]
             elif (self.value_to_send is None) and (len(self.observations_recieved.keys()) >= ((2 * self._f) + 1)):   #### CHANGED THIS TO >=
-                vals = (list(self.observations_recieved.values()))
-                self.value_to_send = np.median(list(map(int, vals)))
-                #### TODO ^ REPLACE ABOVE WITH BETTER SCHEME BASED ON OBSERVATION DISTRIBUTION
+                vals = (list(self.observations_recieved.values()))  # list of strings
+                self.value_to_send = np.array([ast.literal_eval(val) for val in vals])
+                self.value_to_send = np.median(self.value_to_send, axis=0)
 
             if self.value_to_send is not None and not self._sent:
                 self._sent = True
                 self.log(f"VALUE TO SEND: {self.value_to_send}")
                 request = {
                     'leader': self._index,
-                    'data': self.value_to_send}
+                    'data': json.dumps(self.value_to_send.tolist())}
                 await self.preprepare(request)
                 return web.Response()
 
@@ -227,7 +231,8 @@ class Agent:
             self._next_propose_slot_no = max(self._next_propose_slot_no, int(slot_no))
             if self.obs is None:
                 self.obs = self.get_obs()
-            if ("AF" in self.method) and (np.abs(self.obs - data['data']) > self.epsilon):
+            proposed_data = np.array(ast.literal_eval(data['data']))
+            if ("AF" in self.method) and ((np.abs(self.obs - proposed_data) > self.epsilon).all()):
                 # request leader change
                 self.log("Agent {} requests leader change bc of bad data! proposed obs: {}, own obs: {}".format(self._index, data['data'], self.obs))
                 # If data is very different from own data, then ask for leader change ###
@@ -298,7 +303,8 @@ class Agent:
                 self.log("Agent {} committed".format(self._index) + str(data))
                 self.commit_sent[slot_no] = True
                 self.permanent_record[slot_no] = data
-                self.commited_vals.append(data["data"])
+                #self.commited_vals.append(data["data"])
+                self.commited_vals = data["data"]
 #                 np.save(f"logs/results_{self._index}.npy",  np.array(self.commit_true_counts))
 
                 ### ADDING THIS LINE ###
