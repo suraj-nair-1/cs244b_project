@@ -6,7 +6,8 @@
 
 * `agent.py` contains the main class used to implement the LF+AF, LF, AF, and PBFT consensus protocols. We assume that every agent acts as both the client and server. 
 * `faulty_agents.py` contains wrapper classes that introduce standard faulty Byzantine agents as well as malicious agents with faulty observations. 
-* `run_agent.py` is called by `agent.py` and initializes a regular or faulty agent. 
+* Each experiment file below act as a master process that launches all agents in parallel. 
+* `run_agent.py` is called by the experiment files and starts the consensus protocol by initializing a regular or faulty agent. 
 
 ## Experiments 
 
@@ -17,6 +18,7 @@
 ### (2) Faulty Observations
 
 * `run_experiment.py` evaluates observation correctness using malicious agents who send faulty observations. 
+* The code related to the Egocentric Image View domain is located on the `images` branch.
 
 ### (3) Gridworld
 
